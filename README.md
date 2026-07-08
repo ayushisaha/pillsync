@@ -24,6 +24,7 @@ PillSync is an Intelligent Medicine Reminder & Tracking Platform built for patie
 - **Tailwind CSS v3** — Utility-first CSS framework for styling
 - **React Router DOM** — Declarative routing for page navigation
 - **Axios** — Promise-based HTTP client for making API requests to the backend
+- **Context API** — Lightweight global state management for user authentication and UI themes
 - **Plus Jakarta Sans** — Modern sans-serif typography (Google Fonts)
 
 ### Database
@@ -31,8 +32,20 @@ PillSync is an Intelligent Medicine Reminder & Tracking Platform built for patie
 - **pgAdmin** — Web-based administration and management GUI for PostgreSQL
 - Connected securely via `DATABASE_URL` in the environment configuration (`.env`)
 
-## Structure
+### AI, OCR & Third-Party Services
+- **Tesseract OCR** — Optical Character Recognition engine used for extracting raw text from prescription uploads
+- **Groq API** — High-speed, free LLM inference API used for smart text parsing and medical entity extraction from prescriptions
+- **SendGrid** — Email infrastructure service used for transactional automated email notifications
+- **Twilio** — Cloud communications platform utilized via trial credits for the real-time SMS reminder demo
 
+### Testing, Development & Deployment
+- **Pytest** — Python framework used for writing and executing isolated backend unit and integration tests
+- **Postman** — API client tool used for building, testing, and documenting the REST endpoints
+- **Git & GitHub** — Version control management and multi-branch workflow tracking
+- **Render** — Cloud hosting platform utilized for final production-grade backend deployment
+- **Vercel** — Frontend hosting platform utilized for optimized React single-page application deployment
+
+## Structure
 - `/frontend`: React application containing Auth forms, Dashboard, and UI styles.
 - `/backend`: FastAPI service handling user registration, authentication, and profile updates.
 
