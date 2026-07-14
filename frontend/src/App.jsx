@@ -44,3 +44,13 @@ export default function App() {
     </AuthContext.Provider>
   );
 }
+
+/* 
+   cd frontend
+npm run dev
+*/
+
+/* 
+   cd frontend
+npm run dev
+*/

@@ -44,6 +44,11 @@ export default function Auth({ mode }) {
   const navigate = useNavigate();
   const isLogin = mode === "login";
   const isForgot = mode === "forgot";
+
+  // Login Role state derived from URL query parameter or default to "patient"
+  const searchParams = new URLSearchParams(window.location.search);
+  const urlRole = searchParams.get("role");
+  const [loginRole, setLoginRole] = useState(urlRole || "patient");
   
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ 
@@ -146,6 +151,14 @@ export default function Auth({ mode }) {
         }
         
         const res = await axios.post(API + endpoint, payload);
+        
+        // Enforce role-based login portal separation
+        if (isLogin && res.data.user.role !== loginRole) {
+          setError(`This account is registered as a ${res.data.user.role}. Please sign in via the correct portal.`);
+          setLoading(false);
+          return;
+        }
+
         login(res.data.token, res.data.user);
         navigate("/dashboard");
       }
@@ -220,19 +233,43 @@ export default function Auth({ mode }) {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 md:p-16 overflow-y-auto h-screen">
         <div className="w-full max-w-[460px] my-auto py-8">
           <div className="glass-panel p-8 sm:p-10 rounded-[32px] shadow-2xl shadow-[#004346]/8 border border-white/70 animate-scale-up">
+            {/* Login Role Switcher Tabs */}
+            {isLogin && (
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-2xl mb-6 font-extrabold text-[11px] sm:text-xs">
+                {["patient", "caregiver", "admin"].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setLoginRole(r);
+                      setError("");
+                      setSuccess("");
+                    }}
+                    className={`flex-1 py-2 sm:py-2.5 rounded-xl capitalize transition-all cursor-pointer ${
+                      loginRole === r
+                        ? "bg-[#004346] text-white shadow-sm"
+                        : "text-gray-500 hover:text-[#004346]"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Header info */}
             <div className="mb-6">
               <div className="text-xs font-semibold text-[#508991] uppercase tracking-widest mb-1.5">
-                {isForgot ? "Password Recovery" : isLogin ? "Welcome back" : "Get started"}
+                {isForgot ? "Password Recovery" : isLogin ? `${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)} Portal` : "Get started"}
               </div>
-              <h2 className="text-3xl font-extrabold text-[#004346]">
-                {isForgot ? "Reset password" : isLogin ? "Sign in to PillSync" : "Create account"}
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#004346]">
+                {isForgot ? "Reset password" : isLogin ? `Sign in as ${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)}` : "Create account"}
               </h2>
-              <p className="text-sm text-[#508991] mt-2">
+              <p className="text-xs sm:text-sm text-[#508991] mt-2">
                 {isForgot 
                   ? "Enter your email and choose a new password" 
                   : isLogin 
-                  ? "Access your personalized medication dashboard" 
+                  ? `Access your personalized ${loginRole} dashboard` 
                   : "Register to start managing medicines and tracking schedules"}
               </p>
             </div>
@@ -280,7 +317,9 @@ export default function Auth({ mode }) {
                     <input 
                       name="phone" 
                       type="tel"
-                      placeholder="+91 9876543210" 
+                      pattern="[0-9]{10}"
+                      title="Please enter a 10 digit phone number"
+                      placeholder="enter ur 10 digit number" 
                       value={form.phone}
                       onChange={handle} 
                       className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
@@ -399,6 +438,7 @@ export default function Auth({ mode }) {
                   placeholder="you@example.com" 
                   value={form.email}
                   onChange={handle}
+                  autoComplete="off"
                   className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     emailError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
@@ -417,6 +457,7 @@ export default function Auth({ mode }) {
                   placeholder="••••••••" 
                   value={form.password}
                   onChange={handle}
+                  autoComplete="new-password"
                   className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     passwordError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
@@ -436,6 +477,7 @@ export default function Auth({ mode }) {
                     placeholder="••••••••" 
                     value={form.confirmPassword}
                     onChange={handle}
+                    autoComplete="new-password"
                     className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
                   />
                 </div>

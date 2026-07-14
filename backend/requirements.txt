@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
 python-jose[cryptography]
 passlib[bcrypt]
@@ -8,3 +8,5 @@ pydantic[email]
 python-dotenv
 psycopg2-binary
 bcrypt==4.0.1
+apscheduler
+sendgrid
