@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "./App";
 import axios from "axios";
 
@@ -42,13 +42,22 @@ const RefreshIcon = ({ className = "w-5 h-5" }) => (
 export default function Auth({ mode }) {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isLogin = mode === "login";
   const isForgot = mode === "forgot";
 
   // Login Role state derived from URL query parameter or default to "patient"
-  const searchParams = new URLSearchParams(window.location.search);
+  const searchParams = new URLSearchParams(location.search);
   const urlRole = searchParams.get("role");
   const [loginRole, setLoginRole] = useState(urlRole || "patient");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const r = params.get("role");
+    if (r && ["patient", "caregiver", "admin"].includes(r)) {
+      setLoginRole(r);
+    }
+  }, [location.search]);
   
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ 
@@ -58,7 +67,7 @@ export default function Auth({ mode }) {
     confirmPassword: "", 
     role: "patient", 
     phone: "",
-    gender: "male",
+    gender: "",
     age: "",
     weight: "",
     height: ""
@@ -244,6 +253,7 @@ export default function Auth({ mode }) {
                       setLoginRole(r);
                       setError("");
                       setSuccess("");
+                      navigate(`/login?role=${r}`, { replace: true });
                     }}
                     className={`flex-1 py-2 sm:py-2.5 rounded-xl capitalize transition-all cursor-pointer ${
                       loginRole === r
@@ -277,14 +287,18 @@ export default function Auth({ mode }) {
             {/* Success & Error Banners */}
             {success && (
               <div className="flex items-center gap-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
-                <span>✓</span>
+                <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
                 <span className="font-medium">{success}</span>
               </div>
             )}
             
             {error && (
               <div className="flex items-center gap-3 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
-                <span>⚠️</span>
+                <svg className="w-4 h-4 text-red-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
                 <span className="font-medium">{error}</span>
               </div>
             )}
@@ -301,7 +315,7 @@ export default function Auth({ mode }) {
                     <input 
                       name="name" 
                       type="text"
-                      placeholder="Ayushi Saha" 
+                      placeholder="Enter Your Full Name" 
                       value={form.name}
                       onChange={handle} 
                       required
@@ -319,7 +333,7 @@ export default function Auth({ mode }) {
                       type="tel"
                       pattern="[0-9]{10}"
                       title="Please enter a 10 digit phone number"
-                      placeholder="enter ur 10 digit number" 
+                      placeholder="Enter Your Phone Number" 
                       value={form.phone}
                       onChange={handle} 
                       className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
@@ -366,6 +380,7 @@ export default function Auth({ mode }) {
                               onChange={handle}
                               className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold cursor-pointer appearance-none text-[#0C3C34]"
                             >
+                              <option value="">Select Gender</option>
                               <option value="male">Male</option>
                               <option value="female">Female</option>
                               <option value="other">Other</option>

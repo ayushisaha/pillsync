@@ -79,6 +79,7 @@ class Medicine(Base):
     start_date    = Column(Date, nullable=True)
     end_date      = Column(Date, nullable=True)
     is_deleted    = Column(Boolean, default=False)   # soft-delete flag
+    formulation   = Column(String, default="pill")   # 'pill' or 'syrup'
     created_at    = Column(DateTime, server_default=func.now())
     owner         = relationship("User", back_populates="medicines")
     schedules     = relationship("Schedule", back_populates="medicine", cascade="all, delete-orphan")
@@ -181,6 +182,7 @@ class MedicineCreate(BaseModel):
     schedules:   List[str]     = []   # list of "hh:mm am/pm" strings
     start_date:  Optional[str] = None  # "YYYY-MM-DD"
     end_date:    Optional[str] = None  # "YYYY-MM-DD"
+    formulation: Optional[str] = "pill"
 
 
 class MedicineUpdate(BaseModel):
@@ -192,6 +194,7 @@ class MedicineUpdate(BaseModel):
     schedules:   Optional[List[str]] = None
     start_date:  Optional[str]       = None  # "YYYY-MM-DD"
     end_date:    Optional[str]       = None  # "YYYY-MM-DD"
+    formulation: Optional[str]       = None
 
 
 class DoseStatusUpdate(BaseModel):
@@ -251,6 +254,7 @@ def _medicine_dict(m: Medicine) -> dict:
         "description":   m.description,
         "dosage":        m.dosage,
         "category":      m.category or "Other",
+        "formulation":   m.formulation or "pill",
         "stock":         m.stock,
         "initial_stock": m.initial_stock,
         "start_date":    str(m.start_date) if m.start_date else None,
@@ -273,6 +277,40 @@ def _day_range(day: date):
     start = datetime(day.year, day.month, day.day, 0, 0, 0)
     end   = datetime(day.year, day.month, day.day, 23, 59, 59)
     return start, end
+
+
+import re
+
+def get_dosage_value(dosage_str: Optional[str], formulation: Optional[str]) -> float:
+    if not dosage_str:
+        return 1.0
+    # Extract float/int from strings like "5 ml", "2.5 ml", "2 tablets", "10"
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)", dosage_str)
+    if match:
+        return float(match.group(1))
+    return 1.0
+
+def is_scheduled_time_past(log_day: date, time_str: str) -> bool:
+    today = date.today()
+    if log_day < today:
+        return True
+    if log_day > today:
+        return False
+    try:
+        parts = time_str.strip().split()
+        if len(parts) != 2:
+            return False
+        h_m, period = parts
+        h, m = map(int, h_m.split(':'))
+        if period.lower() == 'pm' and h != 12:
+            h += 12
+        if period.lower() == 'am' and h == 12:
+            h = 0
+        now = datetime.now()
+        return (now.hour, now.minute) > (h, m)
+    except Exception as e:
+        logging.warning(f"Error parsing scheduled time {time_str}: {e}")
+        return False
 
 
 # ══════════════════════════════════════════════════════════
@@ -548,6 +586,7 @@ def add_medicine(
         user_id=target_id,
         name=data.name, description=data.description,
         dosage=data.dosage, category=data.category or "Other",
+        formulation=data.formulation or "pill",
         stock=data.stock, initial_stock=data.stock,
         start_date=start_d, end_date=end_d,
     )
@@ -584,6 +623,41 @@ def list_medicines(
     return [_medicine_dict(m) for m in meds]
 
 
+@app.get("/medicines/history-predict", tags=["Medicines"])
+def history_predict(
+    disease_name: Optional[str] = Query(None),
+    patient_id:   Optional[int] = Query(None),
+    db:           Session       = Depends(get_db),
+    user:         User          = Depends(get_current_user),
+):
+    target_id = _resolve_target(user, patient_id)
+    if not disease_name:
+        raise HTTPException(400, "disease_name parameter is required")
+    # Search for any past medicine matching this category/disease (even if soft-deleted)
+    med = db.query(Medicine).filter(
+        Medicine.user_id == target_id,
+        func.lower(Medicine.category) == disease_name.strip().lower()
+    ).order_by(Medicine.created_at.desc()).first()
+    if not med:
+        return {"recurrence_detected": False}
+    duration_days = None
+    if med.start_date and med.end_date:
+        duration_days = (med.end_date - med.start_date).days
+    return {
+        "recurrence_detected": True,
+        "name":                med.name,
+        "description":         med.description,
+        "dosage":              med.dosage,
+        "category":            med.category,
+        "formulation":         med.formulation or "pill",
+        "stock":               med.stock,
+        "schedules":           [s.time for s in med.schedules],
+        "duration_days":       duration_days,
+        "is_deleted":          med.is_deleted
+    }
+
+
+
 @app.patch("/medicines/{med_id}", tags=["Medicines"])
 def update_medicine(
     med_id:     int,
@@ -600,6 +674,7 @@ def update_medicine(
     if data.description is not None: med.description = data.description
     if data.dosage      is not None: med.dosage      = data.dosage
     if data.category    is not None: med.category    = data.category
+    if data.formulation is not None: med.formulation = data.formulation
     if data.stock       is not None: med.stock       = data.stock
     if data.start_date  is not None:
         try: med.start_date = datetime.strptime(data.start_date, "%Y-%m-%d").date()
@@ -665,8 +740,7 @@ def update_dose_status(
         IntakeLog.medicine_id    == med_id,
         IntakeLog.user_id        == target_id,
         IntakeLog.scheduled_time == data.scheduled_time,
-        IntakeLog.taken_at       >= day_start,
-        IntakeLog.taken_at       <= day_end,
+        IntakeLog.log_date       == log_day,
     ).first()
 
     old_status = existing.status if existing else "pending"
@@ -675,12 +749,16 @@ def update_dose_status(
     if old_status == new_status:
         return {"message": "No change", "remaining_stock": med.stock}
 
-    # Stock adjustments
+    # Formulation-based stock adjustments
+    dosage_val = get_dosage_value(med.dosage, med.formulation)
     if old_status == "taken" and new_status in ("missed", "pending"):
-        med.stock += 1                 # restore dose
+        med.stock += dosage_val                 # restore dose stock
     elif old_status != "taken" and new_status == "taken":
-        if med.stock > 0:
-            med.stock -= 1             # consume dose
+        if med.stock >= dosage_val:
+            med.stock -= dosage_val             # consume dose stock
+        else:
+            # Consume whatever is left, down to 0
+            med.stock = 0.0
 
     if new_status == "pending":
         if existing:
@@ -728,9 +806,11 @@ def get_schedule_for_date(
 
     for med in meds:
         # Respect medicine duration start_date/end_date
+        # If end_date is not set, medicine only shows on start_date (single-day)
+        effective_end = med.end_date if med.end_date else med.start_date
         if med.start_date and log_day < med.start_date:
             continue
-        if med.end_date and log_day > med.end_date:
+        if effective_end and log_day > effective_end:
             continue
 
         for sch in med.schedules:
@@ -738,19 +818,27 @@ def get_schedule_for_date(
                 IntakeLog.medicine_id    == med.id,
                 IntakeLog.user_id        == target_id,
                 IntakeLog.scheduled_time == sch.time,
-                IntakeLog.taken_at       >= day_start,
-                IntakeLog.taken_at       <= day_end,
+                IntakeLog.log_date       == log_day,
             ).first()
+            
+            # Default to missed if time has passed
+            status_val = "pending"
+            if log:
+                status_val = log.status
+            elif is_scheduled_time_past(log_day, sch.time):
+                status_val = "missed"
+
             result.append({
                 "medicine_id":    med.id,
                 "name":           med.name,
                 "description":    med.description,
                 "dosage":         med.dosage,
                 "category":       med.category,
+                "formulation":    med.formulation or "pill",
                 "stock":          med.stock,
                 "low_stock":      med.stock < 10,
                 "scheduled_time": sch.time,
-                "status":         log.status if log else "pending",
+                "status":         status_val,
             })
 
     result.sort(key=lambda x: x["scheduled_time"])
@@ -776,9 +864,10 @@ def get_adherence_for_date(
     
     active_meds = []
     for med in meds:
+        effective_end = med.end_date if med.end_date else med.start_date
         if med.start_date and log_day < med.start_date:
             continue
-        if med.end_date and log_day > med.end_date:
+        if effective_end and log_day > effective_end:
             continue
         active_meds.append(med)
 
@@ -792,14 +881,19 @@ def get_adherence_for_date(
                 IntakeLog.medicine_id    == med.id,
                 IntakeLog.user_id        == target_id,
                 IntakeLog.scheduled_time == sch.time,
-                IntakeLog.taken_at       >= day_start,
-                IntakeLog.taken_at       <= day_end,
+                IntakeLog.log_date       == log_day,
             ).first()
+            
+            status_val = "pending"
             if log:
-                if log.status == "taken":
-                    taken += 1
-                elif log.status == "missed":
-                    missed += 1
+                status_val = log.status
+            elif is_scheduled_time_past(log_day, sch.time):
+                status_val = "missed"
+
+            if status_val == "taken":
+                taken += 1
+            elif status_val == "missed":
+                missed += 1
 
     pct = round((taken / total_scheduled) * 100) if total_scheduled > 0 else 0
 
@@ -819,26 +913,94 @@ def get_intake_history(
     db:         Session       = Depends(get_db),
     user:       User          = Depends(get_current_user),
 ):
-    """Full chronological dose history (all time)."""
+    """Full chronological dose history (all time) from start_date to today."""
     target_id = _resolve_target(user, patient_id)
-    logs = (
-        db.query(IntakeLog)
-        .filter(IntakeLog.user_id == target_id)
-        .order_by(IntakeLog.taken_at.desc())
-        .all()
-    )
-    return [
-        {
-            "id":             log.id,
-            "medicine_name":  log.medicine.name if log.medicine else "(Deleted Medicine)",
-            "medicine_id":    log.medicine_id,
-            "status":         log.status,
-            "scheduled_time": log.scheduled_time,
-            "log_date":       str(log.log_date),
-            "taken_at":       log.taken_at.strftime("%Y-%m-%d %I:%M %p"),
-        }
-        for log in logs
-    ]
+    
+    # Get all medicines including soft-deleted ones
+    meds = db.query(Medicine).filter(Medicine.user_id == target_id).all()
+    
+    # Get all actual logs
+    logs = db.query(IntakeLog).filter(IntakeLog.user_id == target_id).all()
+    
+    # Index them for faster lookup
+    log_map = {}
+    for log in logs:
+        log_map[(log.medicine_id, log.log_date, log.scheduled_time)] = log
+        
+    today = date.today()
+    history_items = []
+    
+    for med in meds:
+        # Determine the boundaries for history generation
+        start_d = med.start_date
+        if not start_d:
+            start_d = med.created_at.date() if med.created_at else today
+            
+        end_d = med.end_date
+        
+        # We only generate history up to the minimum of (today, effective_end)
+        # If end_date is not set, treat this as a single-start-date medicine
+        # (will only appear on start_date unless end_date is explicitly set)
+        effective_end = end_d if end_d else start_d
+        last_d = today
+        if effective_end and effective_end < last_d:
+            last_d = effective_end
+            
+        if start_d > last_d:
+            continue
+            
+        # Loop through each day from start_d to last_d
+        curr_d = start_d
+        while curr_d <= last_d:
+            for sch in med.schedules:
+                key = (med.id, curr_d, sch.time)
+                log = log_map.get(key)
+                
+                if log:
+                    history_items.append({
+                        "id":             log.id,
+                        "medicine_name":  med.name + (" (Deleted)" if med.is_deleted else ""),
+                        "medicine_id":    med.id,
+                        "status":         log.status,
+                        "scheduled_time": log.scheduled_time,
+                        "log_date":       str(log.log_date),
+                        "taken_at":       log.taken_at.strftime("%Y-%m-%d %I:%M %p") if log.taken_at else "—",
+                    })
+                else:
+                    if med.is_deleted:
+                        continue
+                    
+                    status_val = "pending"
+                    if is_scheduled_time_past(curr_d, sch.time):
+                        status_val = "missed"
+                        
+                    history_items.append({
+                        "id":             f"temp-{med.id}-{curr_d}-{sch.time}",
+                        "medicine_name":  med.name,
+                        "medicine_id":    med.id,
+                        "status":         status_val,
+                        "scheduled_time": sch.time,
+                        "log_date":       str(curr_d),
+                        "taken_at":       "—",
+                    })
+            curr_d += timedelta(days=1)
+            
+    # Sort history items in reverse chronological order
+    def parse_time(item):
+        t_str = item["scheduled_time"]
+        try:
+            h_m, period = t_str.split()
+            h, m = map(int, h_m.split(':'))
+            if period.lower() == 'pm' and h != 12:
+                h += 12
+            if period.lower() == 'am' and h == 12:
+                h = 0
+            return f"{h:02d}:{m:02d}"
+        except:
+            return "00:00"
+            
+    history_items.sort(key=lambda x: (x["log_date"], parse_time(x)), reverse=True)
+    return history_items
 
 
 @app.patch("/users/patients/{patient_id}", tags=["Users"])
