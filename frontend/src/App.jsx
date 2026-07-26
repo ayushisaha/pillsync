@@ -23,9 +23,12 @@ export default function App() {
     setUser(userData);
   };
 
-  const logout = () => {
+  const logout = (redirectUrl) => {
     localStorage.clear();
     setUser(null);
+    if (redirectUrl) {
+      window.location.href = redirectUrl;
+    }
   };
 
   return (
@@ -44,3 +47,13 @@ export default function App() {
     </AuthContext.Provider>
   );
 }
+
+/* 
+   cd frontend
+npm run dev
+*/
+
+/* 
+   cd frontend
+npm run dev
+*/

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "./App";
 import axios from "axios";
 
@@ -42,8 +42,22 @@ const RefreshIcon = ({ className = "w-5 h-5" }) => (
 export default function Auth({ mode }) {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isLogin = mode === "login";
   const isForgot = mode === "forgot";
+
+  // Login Role state derived from URL query parameter or default to "patient"
+  const searchParams = new URLSearchParams(location.search);
+  const urlRole = searchParams.get("role");
+  const [loginRole, setLoginRole] = useState(urlRole || "patient");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const r = params.get("role");
+    if (r && ["patient", "caregiver", "admin"].includes(r)) {
+      setLoginRole(r);
+    }
+  }, [location.search]);
   
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ 
@@ -53,7 +67,7 @@ export default function Auth({ mode }) {
     confirmPassword: "", 
     role: "patient", 
     phone: "",
-    gender: "male",
+    gender: "",
     age: "",
     weight: "",
     height: ""
@@ -146,6 +160,14 @@ export default function Auth({ mode }) {
         }
         
         const res = await axios.post(API + endpoint, payload);
+        
+        // Enforce role-based login portal separation
+        if (isLogin && res.data.user.role !== loginRole) {
+          setError(`This account is registered as a ${res.data.user.role}. Please sign in via the correct portal.`);
+          setLoading(false);
+          return;
+        }
+
         login(res.data.token, res.data.user);
         navigate("/dashboard");
       }
@@ -220,19 +242,44 @@ export default function Auth({ mode }) {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 md:p-16 overflow-y-auto h-screen">
         <div className="w-full max-w-[460px] my-auto py-8">
           <div className="glass-panel p-8 sm:p-10 rounded-[32px] shadow-2xl shadow-[#004346]/8 border border-white/70 animate-scale-up">
+            {/* Login Role Switcher Tabs */}
+            {isLogin && (
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-2xl mb-6 font-extrabold text-[11px] sm:text-xs">
+                {["patient", "caregiver", "admin"].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setLoginRole(r);
+                      setError("");
+                      setSuccess("");
+                      navigate(`/login?role=${r}`, { replace: true });
+                    }}
+                    className={`flex-1 py-2 sm:py-2.5 rounded-xl capitalize transition-all cursor-pointer ${
+                      loginRole === r
+                        ? "bg-[#004346] text-white shadow-sm"
+                        : "text-gray-500 hover:text-[#004346]"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Header info */}
             <div className="mb-6">
               <div className="text-xs font-semibold text-[#508991] uppercase tracking-widest mb-1.5">
-                {isForgot ? "Password Recovery" : isLogin ? "Welcome back" : "Get started"}
+                {isForgot ? "Password Recovery" : isLogin ? `${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)} Portal` : "Get started"}
               </div>
-              <h2 className="text-3xl font-extrabold text-[#004346]">
-                {isForgot ? "Reset password" : isLogin ? "Sign in to PillSync" : "Create account"}
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#004346]">
+                {isForgot ? "Reset password" : isLogin ? `Sign in as ${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)}` : "Create account"}
               </h2>
-              <p className="text-sm text-[#508991] mt-2">
+              <p className="text-xs sm:text-sm text-[#508991] mt-2">
                 {isForgot 
                   ? "Enter your email and choose a new password" 
                   : isLogin 
-                  ? "Access your personalized medication dashboard" 
+                  ? `Access your personalized ${loginRole} dashboard` 
                   : "Register to start managing medicines and tracking schedules"}
               </p>
             </div>
@@ -240,14 +287,18 @@ export default function Auth({ mode }) {
             {/* Success & Error Banners */}
             {success && (
               <div className="flex items-center gap-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
-                <span>✓</span>
+                <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
                 <span className="font-medium">{success}</span>
               </div>
             )}
             
             {error && (
               <div className="flex items-center gap-3 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
-                <span>⚠️</span>
+                <svg className="w-4 h-4 text-red-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
                 <span className="font-medium">{error}</span>
               </div>
             )}
@@ -264,7 +315,7 @@ export default function Auth({ mode }) {
                     <input 
                       name="name" 
                       type="text"
-                      placeholder="Ayushi Saha" 
+                      placeholder="Enter Your Full Name" 
                       value={form.name}
                       onChange={handle} 
                       required
@@ -280,7 +331,9 @@ export default function Auth({ mode }) {
                     <input 
                       name="phone" 
                       type="tel"
-                      placeholder="+91 9876543210" 
+                      pattern="[0-9]{10}"
+                      title="Please enter a 10 digit phone number"
+                      placeholder="Enter Your Phone Number" 
                       value={form.phone}
                       onChange={handle} 
                       className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
@@ -327,6 +380,7 @@ export default function Auth({ mode }) {
                               onChange={handle}
                               className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold cursor-pointer appearance-none text-[#0C3C34]"
                             >
+                              <option value="">Select Gender</option>
                               <option value="male">Male</option>
                               <option value="female">Female</option>
                               <option value="other">Other</option>
@@ -399,6 +453,7 @@ export default function Auth({ mode }) {
                   placeholder="you@example.com" 
                   value={form.email}
                   onChange={handle}
+                  autoComplete="off"
                   className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     emailError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
@@ -417,6 +472,7 @@ export default function Auth({ mode }) {
                   placeholder="••••••••" 
                   value={form.password}
                   onChange={handle}
+                  autoComplete="new-password"
                   className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     passwordError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
@@ -436,6 +492,7 @@ export default function Auth({ mode }) {
                     placeholder="••••••••" 
                     value={form.confirmPassword}
                     onChange={handle}
+                    autoComplete="new-password"
                     className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
                   />
                 </div>
