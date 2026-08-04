@@ -70,12 +70,15 @@ export default function Auth({ mode }) {
     gender: "",
     age: "",
     weight: "",
-    height: ""
+    height: "",
+    code: ""
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
 
   const handle = (e) => {
     const { name, value } = e.target;
@@ -88,6 +91,10 @@ export default function Auth({ mode }) {
     }
     if (name === "password") {
       setPasswordError("");
+      setError("");
+    }
+    if (name === "code") {
+      setCodeError("");
       setError("");
     }
   };
@@ -105,8 +112,18 @@ export default function Auth({ mode }) {
       isValid = false;
     }
 
+    if (isForgot && !codeSent) {
+      // If code is not sent yet, we only validate email
+      return isValid;
+    }
+
     if (!form.password) {
       setPasswordError("Password is required");
+      isValid = false;
+    }
+
+    if (isForgot && !form.code) {
+      setCodeError("Verification code is required");
       isValid = false;
     }
 
@@ -127,14 +144,26 @@ export default function Auth({ mode }) {
     setSuccess("");
     try {
       if (isForgot) {
-        await axios.post(`${API}/auth/reset-password`, {
-          email: form.email,
-          new_password: form.password
-        });
-        setSuccess("Password reset successfully! You can now log in.");
-        setTimeout(() => {
-          navigate("/login");
-        }, 2000);
+        if (!codeSent) {
+          // Send verification code
+          await axios.post(`${API}/auth/send-code`, {
+            email: form.email,
+            purpose: "reset_password"
+          });
+          setCodeSent(true);
+          setSuccess("Verification code sent to your email!");
+        } else {
+          // Verify code and reset password
+          await axios.post(`${API}/auth/reset-password`, {
+            email: form.email,
+            code: form.code,
+            new_password: form.password
+          });
+          setSuccess("Password reset successfully! You can now log in.");
+          setTimeout(() => {
+            navigate("/login");
+          }, 2000);
+        }
       } else {
         const endpoint = isLogin ? "/auth/login" : "/auth/register";
         
