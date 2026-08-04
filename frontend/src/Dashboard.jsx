@@ -13,7 +13,7 @@ const fmtDate = (d) => {
 };
 const todayStr = () => fmtDate(new Date());
 
-// ΓöÇΓöÇΓöÇ Icons ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Icons ───────────────────────────────────────────────
 const TabletIcon = ({ c = "w-6 h-6" }) => (
   <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" /><path d="m8.5 8.5 7 7" />
@@ -156,7 +156,7 @@ const InfoIcon = ({ c = "w-4 h-4" }) => (
 
 const CATS = ["Blood Pressure","Diabetes","Thyroid","Antibiotics","Vitamins","Heart Medications","Other"];
 
-// ΓöÇΓöÇΓöÇ Custom Delete Confirm Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Custom Delete Confirm Modal ─────────────────────────
 function ConfirmModal({ title, message, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -181,7 +181,7 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ AM/PM Time Picker ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── AM/PM Time Picker ───────────────────────────────────
 function AmPmTimePicker({ onAdd }) {
   const [hour, setHour] = useState("08");
   const [min,  setMin]  = useState("00");
@@ -226,7 +226,7 @@ function scheduleNotificationsForMedicine(med) {
     if (diff > 0 && diff < 86400000) {
       setTimeout(() => {
         new Notification("PillSync Reminder", {
-          body: `Time to take ${med.name}${med.dosage ? " ΓÇö " + med.dosage : ""} at ${timeStr}`,
+          body: `Time to take ${med.name}${med.dosage ? " — " + med.dosage : ""} at ${timeStr}`,
           icon: "/favicon.ico",
         });
         try {
@@ -240,7 +240,7 @@ function scheduleNotificationsForMedicine(med) {
   });
 }
 
-// ΓöÇΓöÇΓöÇ Add Medicine Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Add Medicine Modal ──────────────────────────────────
 function AddMedicineModal({ onClose, onSave, token, patientId }) {
   const [form, setForm] = useState({ name:"", description:"", dosage:"", category:"Vitamins", stock:"", start_date:todayStr(), end_date:"", formulation:"tablet" });
   const [otherDisease, setOtherDisease] = useState("");
@@ -263,7 +263,7 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
     const daysLeft = Math.floor(stockNum / (dosesPerDay * doseSize));
     if (daysLeft <= 0) return null;
     const unit = ["liquid","lotion"].includes(form.formulation) ? "ml" : form.formulation === "spray" ? "sprays" : form.formulation === "injection" ? "doses" : "tablet(s)";
-    return `${daysLeft} day(s) supply ΓÇö ${dosesPerDay}x daily ├ù ${doseSize} ${unit}/dose`;
+    return `${daysLeft} day(s) supply — ${dosesPerDay}x daily ├ù ${doseSize} ${unit}/dose`;
   };
 
   const fetchPrediction = async (diseaseName) => {
@@ -436,7 +436,7 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Edit Medicine Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Edit Medicine Modal ──────────────────────────────────
 function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
   const [form, setForm] = useState({
     name: medicine.name||"", description: medicine.description||"",
@@ -558,7 +558,7 @@ function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Edit Patient Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Edit Patient Modal ──────────────────────────────────
 function EditPatientModal({ patient, onClose, onSave, token }) {
   const [form, setForm] = useState({
     name:   patient?.name   || "",
@@ -567,6 +567,7 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
     age:    patient?.age !== undefined ? String(patient.age) : "",
     weight: patient?.weight ? String(patient.weight).replace(" kg","") : "",
     height: patient?.height ? String(patient.height).replace(" cm","") : "",
+    blood_group: patient?.blood_group || "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -579,6 +580,7 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
         age:    form.age    ? parseInt(form.age)   : null,
         weight: form.weight ? `${form.weight} kg`  : null,
         height: form.height ? `${form.height} cm`  : null,
+        blood_group: form.blood_group || null,
       };
       const res = await axios.patch(`${API}/users/patients/${patient.id}`, payload, {
         headers: { Authorization: `Bearer ${token}` }
@@ -614,6 +616,8 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
             <div><label className="label">Height (cm)</label>
               <input type="number" value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="input" placeholder="170"/></div>
           </div>
+          <div><label className="label">Blood Group</label>
+            <input value={form.blood_group} onChange={e=>setForm({...form,blood_group:e.target.value})} className="input" placeholder="e.g. O+, A-"/></div>
           <button type="submit" disabled={loading}
             className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${loading?"bg-[#508991]":"bg-[#004346] hover:bg-[#508991]"}`}>
             {loading ? "Saving..." : "Save Patient Info"}
@@ -624,9 +628,9 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Add Patient Modal (Caregiver) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Add Patient Modal (Caregiver) ───────────────────────
 function AddPatientModal({ onClose, onSave, token }) {
-  const [form, setForm] = useState({ name:"", email:"", password:"", phone:"", gender:"female", age:"", weight:"", height:"" });
+  const [form, setForm] = useState({ name:"", email:"", password:"", phone:"", gender:"female", age:"", weight:"", height:"", blood_group:"" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -642,6 +646,7 @@ function AddPatientModal({ onClose, onSave, token }) {
         age: form.age ? parseInt(form.age) : null,
         weight: form.weight ? `${form.weight} kg` : null,
         height: form.height ? `${form.height} cm` : null,
+        blood_group: form.blood_group || null,
       });
       const newPatientId = res.data?.user?.id;
       // Auto-link new patient to this caregiver
@@ -688,6 +693,8 @@ function AddPatientModal({ onClose, onSave, token }) {
                 <input autoComplete="off" type="number" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="input text-xs" placeholder="kg"/></div>
               <div><label className="label">Height (cm)</label>
                 <input autoComplete="off" type="number" value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="input text-xs" placeholder="cm"/></div>
+              <div className="col-span-2"><label className="label">Blood Group</label>
+                <input autoComplete="off" value={form.blood_group} onChange={e=>setForm({...form,blood_group:e.target.value})} className="input text-xs" placeholder="e.g. O+, A-"/></div>
             </div>
           </div>
           <button type="submit" disabled={loading}
@@ -700,7 +707,7 @@ function AddPatientModal({ onClose, onSave, token }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Delete Account Warning Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Delete Account Warning Modal ─────────────────────────
 function DeleteAccountModal({ onClose, onConfirm, loading }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_.2s_ease]">
@@ -732,7 +739,7 @@ function DeleteAccountModal({ onClose, onConfirm, loading }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Back Button ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Back Button ─────────────────────────────────────────
 function BackButton({ onBack }) {
   return (
     <button onClick={onBack}
@@ -742,7 +749,7 @@ function BackButton({ onBack }) {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Patients Tab (Search + Link + Unlink + Delete) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Patients Tab (Search + Link + Unlink + Delete) ───────
 function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId, setSelectedPatientId, goTo, showToast, addNotif, setShowAddPatient, setEditingPatient, setDeleteConfirm }) {
   const [searchQ,             setSearchQ]             = useState("");
   const [searchResults,       setSearchResults]       = useState([]);
@@ -787,7 +794,7 @@ function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId
       <div className="flex items-center justify-between">
         <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Patient List</h2>
         <div className="flex items-center gap-2">
-          {/* Only caregivers use Find & Link ΓÇö admin sees all patients by default */}
+          {/* Only caregivers use Find & Link — admin sees all patients by default */}
           {role === "caregiver" && (
             <button onClick={() => setShowSearch(s => !s)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all shadow cursor-pointer border ${showSearch ? "bg-[#004346] text-white border-[#004346]" : "bg-white text-[#004346] border-gray-200 hover:border-[#508991]"}`}>
@@ -802,7 +809,7 @@ function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId
         </div>
       </div>
 
-      {/* Search Panel (Caregiver only ΓÇö admin already sees all) */}
+      {/* Search Panel (Caregiver only — admin already sees all) */}
       {role === "caregiver" && showSearch && (
         <div className="bg-white rounded-2xl border border-[#508991]/30 shadow-sm p-4 sm:p-5 space-y-3">
           <p className="text-xs font-extrabold text-[#004346] uppercase tracking-wide">Search & Link Existing Patient</p>
@@ -895,7 +902,7 @@ function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId
                     className="px-3 py-1.5 bg-[#004346] hover:bg-[#508991] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer">Select</button>
                   <button onClick={() => setEditingPatient(pt)}
                     className="w-8 h-8 rounded-xl bg-teal-50 text-[#004346] hover:bg-teal-600 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-teal-100" title="Edit patient"><Edit c="w-3.5 h-3.5"/></button>
-                  {/* Unlink only for Caregivers ΓÇö admin sees all patients without linking */}
+                  {/* Unlink only for Caregivers — admin sees all patients without linking */}
                   {role === "caregiver" && (
                     <button onClick={() => handleUnlink(pt.id, pt.name)}
                       className="px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white text-[10px] font-extrabold transition-all cursor-pointer border border-amber-100" title="Remove from your care list (patient account preserved)">
@@ -907,10 +914,10 @@ function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold text-gray-500 border-t border-gray-50 pt-3">
-                <div>Gender: <span className="text-[#004346] capitalize">{pt.gender||"ΓÇö"}</span></div>
-                <div>Age: <span className="text-[#004346]">{pt.age?`${pt.age} yrs`:"ΓÇö"}</span></div>
-                <div>Height: <span className="text-[#004346]">{pt.height||"ΓÇö"}</span></div>
-                <div>Weight: <span className="text-[#004346]">{pt.weight||"ΓÇö"}</span></div>
+                <div>Gender: <span className="text-[#004346] capitalize">{pt.gender||"—"}</span></div>
+                <div>Age: <span className="text-[#004346]">{pt.age?`${pt.age} yrs`:"—"}</span></div>
+                <div>Height: <span className="text-[#004346]">{pt.height||"—"}</span></div>
+                <div>Weight: <span className="text-[#004346]">{pt.weight||"—"}</span></div>
               </div>
             </div>
           ))}
@@ -922,7 +929,7 @@ function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId
 }
 
 
-// ΓöÇΓöÇΓöÇ Caregiver List Tab (Admin Only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Caregiver List Tab (Admin Only) ──────────────────────
 function CaregiverListTab({ token, showToast, addNotif, setEditingPatient }) {
   const [caregivers,    setCaregivers]    = useState([]);
   const [loading,       setLoading]       = useState(true);
@@ -1069,7 +1076,7 @@ function CaregiverListTab({ token, showToast, addNotif, setEditingPatient }) {
 }
 
 
-// ΓöÇΓöÇΓöÇ OCR Upload & AI Prescription Parser Modal (Multi-Medicine) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── OCR Upload & AI Prescription Parser Modal (Multi-Medicine) ────────────
 function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -1338,7 +1345,7 @@ function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif
                   ) : (
                     <div className="space-y-2 text-xs text-gray-700">
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        <div><span className="text-gray-400 font-medium">Name:</span> <span className="font-extrabold text-[#004346]">{item.name || "ΓÇö"}</span></div>
+                        <div><span className="text-gray-400 font-medium">Name:</span> <span className="font-extrabold text-[#004346]">{item.name || "—"}</span></div>
                         <div><span className="text-gray-400 font-medium">Dosage:</span> <span className="font-bold text-gray-800">{item.dosage || "1 tablet"}</span></div>
                         <div><span className="text-gray-400 font-medium">Disease / Category:</span> <span className="font-bold text-[#508991]">{item.category || "Other"}</span></div>
                       </div>
@@ -1381,7 +1388,7 @@ function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif
   );
 }
 
-// ΓöÇΓöÇΓöÇ AI Refill Prediction Engine ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── AI Refill Prediction Engine ─────────────────────────
 function RefillPredictionWidget({ token, patientId, showToast, loadMedicines }) {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1497,7 +1504,7 @@ function RefillPredictionWidget({ token, patientId, showToast, loadMedicines }) 
 }
 
 
-// ΓöÇΓöÇΓöÇ Medication Adherence Analytics Component ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Medication Adherence Analytics Component ─────────────
 function AdherenceAnalytics({ token, patientId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1604,6 +1611,23 @@ export default function Dashboard() {
   const [globalMedSearch,         setGlobalMedSearch]         = useState("");
   const [searchDropdownOpen,      setSearchDropdownOpen]      = useState(false);
 
+  // AI Assistant states
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Emergency Contacts state persisted in localStorage
+  const [emergencyContacts, setEmergencyContacts] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pillsync_emergency_contacts");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("pillsync_emergency_contacts", JSON.stringify(emergencyContacts));
+  }, [emergencyContacts]);
+
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [dateInput,    setDateInput]    = useState(todayStr());
   const [calOffset,    setCalOffset]    = useState(0);
@@ -1624,6 +1648,7 @@ export default function Dashboard() {
     age:    user?.age||"",
     weight: user?.weight ? String(user.weight).replace(" kg","") : "",
     height: user?.height ? String(user.height).replace(" cm","") : "",
+    blood_group: user?.blood_group||"",
   });
   const [pwForm,      setPwForm]      = useState({ old_password:"", new_password:"", confirm_password:"" });
   const [profLoading, setProfLoading] = useState(false);
@@ -1646,7 +1671,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null);
   const showToast = (message, type="success") => { setToast({message,type}); setTimeout(()=>setToast(null),4000); };
 
-  // ΓöÇΓöÇΓöÇ Notification System (persisted to localStorage) ΓöÇΓöÇΓöÇΓöÇ
+  // ─── Notification System (persisted to localStorage) ────
   const [notifications, setNotifications] = useState(() => {
     try {
       const saved = localStorage.getItem("pillsync_notifications");
@@ -1678,6 +1703,7 @@ export default function Dashboard() {
       age:    user.age||"",
       weight: user.weight ? String(user.weight).replace(" kg","") : "",
       height: user.height ? String(user.height).replace(" cm","") : "",
+      blood_group: user.blood_group||"",
     });
   }, [user]);
 
@@ -1738,8 +1764,8 @@ export default function Dashboard() {
         const key = `${dose.medicine_id}-${slot}-${selectedDate}`;
         if (notifSent.current.has(key)) return;
         notifSent.current.add(key);
-        setNotif({ title:"Time for your medicine!", body:`${dose.name} ΓÇö ${dose.dosage||slot}` });
-        addNotif(`Time to take ${dose.name}${dose.dosage ? " ΓÇö "+dose.dosage : ""}`, "warning", "Medicine Reminder");
+        setNotif({ title:"Time for your medicine!", body:`${dose.name} — ${dose.dosage||slot}` });
+        addNotif(`Time to take ${dose.name}${dose.dosage ? " — "+dose.dosage : ""}`, "warning", "Medicine Reminder");
         if (Notification.permission === "granted")
           new Notification("PillSync Reminder", { body:`Take ${dose.name}`, icon:"/favicon.ico" });
         try { const ac=new(window.AudioContext||window.webkitAudioContext)(); const osc=ac.createOscillator(); osc.type="sine"; osc.frequency.setValueAtTime(660,ac.currentTime); osc.connect(ac.destination); osc.start(); osc.stop(ac.currentTime+0.25); } catch {}
@@ -1777,7 +1803,7 @@ export default function Dashboard() {
       const scheduled = new Date();
       scheduled.setHours(h, m, 0, 0);
       if (scheduled > now) {
-        showToast(`${medName} is scheduled for ${scheduled_time} ΓÇö too early to mark as taken!`, "error");
+        showToast(`${medName} is scheduled for ${scheduled_time} — too early to mark as taken!`, "error");
         return;
       }
     }
@@ -1829,6 +1855,7 @@ export default function Dashboard() {
         payload.age    = profileForm.age ? parseInt(profileForm.age) : null;
         payload.weight = profileForm.weight ? `${profileForm.weight} kg` : null;
         payload.height = profileForm.height ? `${profileForm.height} cm` : null;
+        payload.blood_group = profileForm.blood_group || null;
       }
       const res = await axios.patch(`${API}/users/profile`, payload, { headers: { Authorization: `Bearer ${token}` } });
       login(token, res.data);
@@ -1957,7 +1984,7 @@ export default function Dashboard() {
       {showAddPatient && <AddPatientModal token={token} onClose={()=>setShowAddPatient(false)} onSave={(newPatient)=>{loadPatients(newPatient?.id);showToast("Patient account created!");addNotif("New patient account created successfully.","success","Patient Added");}}/>}
       {showDeleteAccountModal && <DeleteAccountModal onClose={() => setShowDeleteAccountModal(false)} onConfirm={handleDeleteOwnAccount} loading={deleteAccountLoading} />}
 
-      {/* ΓöÇΓöÇ NAVBAR ΓöÇΓöÇ */}
+      {/* ── NAVBAR ── */}
       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 sm:px-6 lg:px-10 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="w-8 h-8 rounded-lg bg-[#004346] text-white flex items-center justify-center shadow-md"><PillIcon c="w-4 h-4"/></div>
@@ -2004,7 +2031,7 @@ export default function Dashboard() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-[#004346] truncate">{med.name}</p>
-                          <p className="text-[9px] text-gray-400 capitalize">{med.category} {med.dosage ? `ΓÇó ${med.dosage}` : ''}</p>
+                          <p className="text-[9px] text-gray-400 capitalize">{med.category} {med.dosage ? `• ${med.dosage}` : ''}</p>
                         </div>
                       </button>
                     ))
@@ -2107,9 +2134,45 @@ export default function Dashboard() {
       {/* Close notification drawer on outside click */}
       {notifOpen && <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)}/>}
 
-      <div className="max-w-[1200px] mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-8">
+      <div className="flex min-h-[calc(100vh-64px)]">
+        {/* ── LEFT SIDEBAR ── */}
+        <aside className="hidden md:flex flex-col w-[180px] shrink-0 bg-white border-r border-gray-100 px-3 py-6 gap-1">
+          <p className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest px-3 mb-2">Navigation</p>
+          {[
+            {key:"overview",label:"Overview",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>},
+            {key:"medicines",label:role==="patient"?"My Medicines":"Medicines",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>},
+            ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patients",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>}]:[]),
+            ...(role==="admin"?[{key:"caregivers",label:"Caregivers",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>}]:[]),
+            {key:"progress",label:"Progress",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>},
+            {key:"refill",label:"Refill Predictor",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>},
+            {key:"history",label:"History",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>},
+            {key:"ai",label:"AI Assistant",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>},
+            {key:"emergency",label:"Emergency Contacts",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>},
+            {key:"settings",label:"Settings",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>},
+          ].map(({key,label,icon})=>(
+            <button key={key} onClick={()=>goTo(key)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer w-full text-left ${tab===key?"bg-[#004346] text-white shadow-md":"text-gray-500 hover:bg-[#D6F3F4]/60 hover:text-[#004346]"}`}>
+              {icon}{label}
+            </button>
+          ))}
+          <div className="mt-auto pt-4 border-t border-gray-100 space-y-1.5">
+            {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
+              <>
+                <button onClick={()=>setShowAdd(true)} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl bg-[#004346] hover:bg-[#508991] text-white text-xs font-bold transition-all cursor-pointer"><Plus c="w-4 h-4"/>Add Medicine</button>
+                <button onClick={()=>setShowOcrModal(true)} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl bg-white hover:bg-teal-50 text-[#004346] border border-teal-200 text-xs font-bold transition-all cursor-pointer"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>Scan Medicine</button>
+              </>
+            )}
+            <button onClick={()=>{logout("/login");}}
+              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-rose-500 hover:bg-rose-50 text-xs font-bold transition-all cursor-pointer">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>Sign Out
+            </button>
+          </div>
+        </aside>
 
-        {/* ΓöÇΓöÇ PATIENT VITALS BANNER ΓöÇΓöÇ */}
+        {/* ── MAIN CONTENT ── */}
+        <div className="flex-1 max-w-[1200px] mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-8">
+
+        {/* ── PATIENT VITALS BANNER ── */}
         {vitalsPatient && (
           <div className="mb-5 sm:mb-7 p-4 sm:p-6 rounded-[24px] bg-gradient-to-r from-[#004346] to-[#508991] text-white shadow-xl relative overflow-hidden">
             <div className="absolute right-0 top-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12 pointer-events-none"/>
@@ -2119,11 +2182,11 @@ export default function Dashboard() {
                 <div>
                   <p className="text-[10px] font-extrabold text-[#74B3CE] uppercase tracking-wider">Patient Vitals</p>
                   <h2 className="text-lg sm:text-xl font-extrabold leading-snug">{vitalsPatient.name}</h2>
-                  <p className="text-xs text-white/75">{vitalsPatient.email}{vitalsPatient.phone ? ` ΓÇó ${vitalsPatient.phone}` : ""}</p>
+                  <p className="text-xs text-white/75">{vitalsPatient.email}{vitalsPatient.phone ? ` • ${vitalsPatient.phone}` : ""}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-2 sm:gap-3 bg-black/15 p-3 sm:p-4 rounded-2xl border border-white/5 flex-1 sm:max-w-xs lg:max-w-sm">
-                {[["Gender",vitalsPatient.gender||"ΓÇö","capitalize"],["Age",vitalsPatient.age?`${vitalsPatient.age} yrs`:"ΓÇö"],["Weight",vitalsPatient.weight||"ΓÇö"],["Height",vitalsPatient.height||"ΓÇö"]].map(([l,v,ex])=>(
+              <div className="grid grid-cols-5 gap-2 sm:gap-3 bg-black/15 p-3 sm:p-4 rounded-2xl border border-white/5 flex-1 sm:max-w-xs lg:max-w-sm">
+                {[["Gender",vitalsPatient.gender||"—","capitalize"],["Age",vitalsPatient.age?`${vitalsPatient.age} yrs`:"—"],["Weight",vitalsPatient.weight||"—"],["Height",vitalsPatient.height||"—"],["Blood Group",vitalsPatient.blood_group||"—"]].map(([l,v,ex])=>(
                   <div key={l}><p className="text-[9px] font-extrabold text-[#74B3CE] uppercase">{l}</p><p className={`text-xs sm:text-sm font-bold ${ex||""}`}>{v}</p></div>
                 ))}
               </div>
@@ -2135,7 +2198,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ΓöÇΓöÇ HEADER + TABS ΓöÇΓöÇ */}
+        {/* ── HEADER ── */}
         <div className="flex flex-col gap-3 mb-5 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div>
@@ -2148,33 +2211,36 @@ export default function Dashboard() {
             {["caregiver","admin"].includes(role) && patientList.length > 0 && (
               <select value={selectedPatientId||""} onChange={e=>setSelectedPatientId(Number(e.target.value))}
                 className="w-full sm:w-auto px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-[#004346] bg-white outline-none cursor-pointer">
-                {patientList.map(p=><option key={p.id} value={p.id}>{p.name} ΓÇö {p.email}</option>)}
+                {patientList.map(p=><option key={p.id} value={p.id}>{p.name} — {p.email}</option>)}
               </select>
             )}
           </div>
-          {/* Tab bar */}
-          <div className="flex overflow-x-auto gap-1 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm" style={{scrollbarWidth:"none"}}>
+          {/* Mobile tab bar (visible only on small screens) */}
+          <div className="flex md:hidden overflow-x-auto gap-1 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm" style={{scrollbarWidth:"none"}}>
             {[
               {key:"overview",label:"Overview"},
-              ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patient List"}]:[]),
-              ...(role==="admin"?[{key:"caregivers",label:"Caregiver List"}]:[]),
-              {key:"medicines",label:role==="patient"?"My Medicines":"Patient Medicines"},
+              ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patients"}]:[]),
+              ...(role==="admin"?[{key:"caregivers",label:"Caregivers"}]:[]),
+              {key:"medicines",label:"Medicines"},
               {key:"progress",label:"Progress"},
+              {key:"refill",label:"Refill"},
               {key:"history",label:"History"},
+              {key:"ai",label:"AI"},
+              {key:"emergency",label:"Emergency"},
               {key:"settings",label:"Settings"},
             ].map(({key,label})=>(
               <button key={key} onClick={()=>goTo(key)}
-                className={`cursor-pointer px-3 sm:px-5 py-2 rounded-xl text-[11px] sm:text-xs font-extrabold whitespace-nowrap transition-all ${tab===key?"bg-[#004346] text-white shadow":"text-gray-400 hover:text-[#004346]"}`}>
+                className={`cursor-pointer px-3 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap transition-all ${tab===key?"bg-[#004346] text-white shadow":"text-gray-400 hover:text-[#004346]"}`}>
                 {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* ΓöÇΓöÇ BACK BUTTON ΓöÇΓöÇ */}
+        {/* ── BACK BUTTON ── */}
         {canGoBack && <BackButton onBack={goBack}/>}
 
-        {/* ΓöÇΓöÇ STATS CARDS (Only on Overview and Progress tabs) ΓöÇΓöÇ */}
+        {/* ── STATS CARDS (Only on Overview and Progress tabs) ── */}
         {(tab === "overview" || tab === "progress") && (role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-8">
             {[
@@ -2203,7 +2269,7 @@ export default function Dashboard() {
                   {adherence.low_stock_meds.map(med=>(
                     <div key={med.id} className="flex items-center gap-3 p-3 sm:p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800">
                       <AlertIcon c="w-5 h-5 text-amber-500 shrink-0"/>
-                      <p className="text-xs font-semibold"><span className="font-extrabold">{med.name}</span> is low ΓÇö only <span className="font-extrabold">{med.stock}</span> left.</p>
+                      <p className="text-xs font-semibold"><span className="font-extrabold">{med.name}</span> is low — only <span className="font-extrabold">{med.stock}</span> left.</p>
                     </div>
                   ))}
                 </div>
@@ -2328,7 +2394,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* AI Refill Prediction Engine ΓÇö bottom of overview */}
+            {/* AI Refill Prediction Engine — bottom of overview */}
             <RefillPredictionWidget
               token={token}
               patientId={effectivePatientId}
@@ -2379,7 +2445,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <h4 className="font-extrabold text-rose-900 text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2">
-                        <span>Low Stock Alert ΓÇö Immediate Action Needed</span>
+                        <span>Low Stock Alert — Immediate Action Needed</span>
                         <span className="px-2 py-0.5 rounded-full bg-rose-200 text-rose-800 text-[10px] font-extrabold">
                           {medicines.filter(m => !m.is_deleted && m.stock < 10).length} Item{medicines.filter(m => !m.is_deleted && m.stock < 10).length > 1 ? "s" : ""}
                         </span>
@@ -2462,7 +2528,7 @@ export default function Dashboard() {
                     <div className="flex flex-wrap gap-2 text-xs font-semibold">
                       {med.dosage && <span className="px-2 py-0.5 rounded-lg bg-[#D6F3F4] text-[#004346]">{med.dosage}</span>}
                       <span className={`px-2 py-0.5 rounded-lg ${med.low_stock?"bg-amber-50 text-amber-600":"bg-gray-50 text-gray-500"}`}>
-                        {stockDisplay(med)}{med.low_stock && " ΓÇö Low Stock"}
+                        {stockDisplay(med)}{med.low_stock && " — Low Stock"}
                       </span>
                       {refillDays(med) !== null && (() => {
                         const d = refillDays(med);
@@ -2534,7 +2600,7 @@ export default function Dashboard() {
                       <span className={`text-sm font-extrabold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-rose-600"}`}>{pct}%</span>
                     </div>
                     <p className="text-[10px] text-gray-400 mt-1.5">
-                      {pct >= 80 ? "Excellent adherence! Keep it up." : pct >= 50 ? "Good progress, but some doses are being missed." : "Low adherence ΓÇö consider setting more reminders."}
+                      {pct >= 80 ? "Excellent adherence! Keep it up." : pct >= 50 ? "Good progress, but some doses are being missed." : "Low adherence — consider setting more reminders."}
                     </p>
                   </div>
                 </div>
@@ -2565,7 +2631,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                               <p className="font-extrabold text-[#004346] text-sm">{med.name}</p>
-                              <p className="text-[10px] text-gray-400 font-semibold uppercase">{med.category} ΓÇö {taken}/{total} doses taken</p>
+                              <p className="text-[10px] text-gray-400 font-semibold uppercase">{med.category} — {taken}/{total} doses taken</p>
                             </div>
                           </div>
                           <span className={`text-sm font-extrabold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-rose-600"}`}>{pct}%</span>
@@ -2596,7 +2662,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                               <h4 className="font-extrabold text-[#004346] text-sm">{med.name}</h4>
-                              <p className="text-[10px] text-gray-400 font-semibold uppercase">{med.category} ΓÇó {med.schedules?.length || 0}x daily</p>
+                              <p className="text-[10px] text-gray-400 font-semibold uppercase">{med.category} • {med.schedules?.length || 0}x daily</p>
                             </div>
                           </div>
                           <div className="flex justify-between md:justify-end gap-2 sm:gap-3 overflow-x-auto py-1">
@@ -2629,7 +2695,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              /* Progress list ΓÇö summary per medicine */
+              /* Progress list — summary per medicine */
               <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                 {medicines.filter(m => !m.is_deleted).length === 0 ? (
                   <div className="flex flex-col items-center py-14 text-center">
@@ -2707,7 +2773,7 @@ export default function Dashboard() {
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 sm:px-5 py-3 font-bold text-[#004346]">{log.medicine_name}</td>
                         <td className="px-4 sm:px-5 py-3 text-gray-500 text-xs">{log.log_date||log.taken_at?.slice(0,10)}</td>
-                        <td className="px-4 sm:px-5 py-3 text-gray-500 text-xs">{log.scheduled_time||"ΓÇö"}</td>
+                        <td className="px-4 sm:px-5 py-3 text-gray-500 text-xs">{log.scheduled_time||"—"}</td>
                         <td className="px-4 sm:px-5 py-3">
                           <button
                             onClick={() => toggleHistoryStatus(log)}
@@ -2751,6 +2817,7 @@ export default function Dashboard() {
                     <div><label className="label">Age</label><input type="number" className={inp+" text-xs"} value={profileForm.age} onChange={e=>setProfileForm({...profileForm,age:e.target.value})} placeholder="25"/></div>
                     <div><label className="label">Weight (kg)</label><input type="number" className={inp+" text-xs"} value={profileForm.weight} onChange={e=>setProfileForm({...profileForm,weight:e.target.value})} placeholder="70"/></div>
                     <div><label className="label">Height (cm)</label><input type="number" className={inp+" text-xs"} value={profileForm.height} onChange={e=>setProfileForm({...profileForm,height:e.target.value})} placeholder="170"/></div>
+                    <div className="col-span-2"><label className="label">Blood Group</label><input className={inp+" text-xs"} value={profileForm.blood_group} onChange={e=>setProfileForm({...profileForm,blood_group:e.target.value})} placeholder="e.g. O+, A-"/></div>
                   </div>
                 )}
                 <div><label className="label">Email (read-only)</label><input className={inp+" cursor-not-allowed text-gray-400"} value={user?.email||""} disabled/></div>
@@ -2765,21 +2832,21 @@ export default function Dashboard() {
                 <p className="text-xs text-gray-400 mt-0.5">Change your password. Min. 6 characters.</p>
               </div>
               <form onSubmit={handlePwChange} className="space-y-4">
-                <div><label className="label">Current Password</label><input type="password" className={inp} value={pwForm.old_password} onChange={e=>setPwForm({...pwForm,old_password:e.target.value})} placeholder="ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó" required autoComplete="current-password"/></div>
-                <div><label className="label">New Password</label><input type="password" className={inp} value={pwForm.new_password} onChange={e=>setPwForm({...pwForm,new_password:e.target.value})} placeholder="ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó" required autoComplete="new-password"/></div>
-                <div><label className="label">Confirm New Password</label><input type="password" className={inp} value={pwForm.confirm_password} onChange={e=>setPwForm({...pwForm,confirm_password:e.target.value})} placeholder="ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó" required autoComplete="new-password"/></div>
+                <div><label className="label">Current Password</label><input type="password" className={inp} value={pwForm.old_password} onChange={e=>setPwForm({...pwForm,old_password:e.target.value})} placeholder="••••••••" required autoComplete="current-password"/></div>
+                <div><label className="label">New Password</label><input type="password" className={inp} value={pwForm.new_password} onChange={e=>setPwForm({...pwForm,new_password:e.target.value})} placeholder="••••••••" required autoComplete="new-password"/></div>
+                <div><label className="label">Confirm New Password</label><input type="password" className={inp} value={pwForm.confirm_password} onChange={e=>setPwForm({...pwForm,confirm_password:e.target.value})} placeholder="••••••••" required autoComplete="new-password"/></div>
                 <button type="submit" disabled={pwLoading} className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${pwLoading?"bg-[#508991]":"bg-[#004346] hover:bg-[#508991]"}`}>
                   {pwLoading?"Updating...":"Update Password"}
                 </button>
               </form>
             </div>
 
-            {/* Danger Zone ΓÇô Delete Account */}
+            {/* Danger Zone – Delete Account */}
             <div className="md:col-span-2 bg-rose-50/50 p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] border border-rose-200/60 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="font-extrabold text-lg text-rose-700 flex items-center gap-2">
-                    <Trash c="w-5 h-5 text-rose-600"/> Danger Zone ΓÇö Delete Account
+                    <Trash c="w-5 h-5 text-rose-600"/> Danger Zone — Delete Account
                   </h3>
                   <p className="text-xs text-rose-600/80 mt-1 max-w-xl">
                     Permanently delete your PillSync account. All your profile data, active schedules, adherence reports, and intake history will be permanently erased.
@@ -2793,9 +2860,165 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-      </div>
 
-      {/* ΓöÇΓöÇ TOAST ΓöÇΓöÇ */}
+        {/* ████ AI ASSISTANT TAB ████ */}
+        {tab === "ai" && (
+          <div className="bg-white rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100 overflow-hidden" style={{height:"calc(100vh - 240px)"}}>
+            <div className="border-b border-gray-100 px-5 sm:px-8 py-4 sm:py-5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#004346] to-[#508991] flex items-center justify-center shadow-md">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-lg text-[#004346]">PillSync AI Assistant</h3>
+                <p className="text-xs text-gray-400">Ask me anything about your medicines, dosages, or health.</p>
+              </div>
+            </div>
+            <div className="flex flex-col h-[calc(100%-80px)]">
+              <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-5 space-y-4" id="ai-chat-area">
+                {aiMessages.length === 0 && (
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#004346] to-[#508991] flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    </div>
+                    <h4 className="text-lg font-extrabold text-[#004346] mb-1">Welcome to PillSync AI</h4>
+                    <p className="text-sm text-gray-400 max-w-md mx-auto">I can help you understand your medicines, check for interactions, explain dosages, and answer health-related questions.</p>
+                    <div className="flex flex-wrap justify-center gap-2 mt-6">
+                      {["What are my active medicines?","When should I take my next dose?","Any refills needed soon?"].map(q=>(
+                        <button key={q} onClick={()=>setAiInput(q)} className="px-4 py-2 bg-[#D6F3F4] hover:bg-[#508991]/20 text-[#004346] rounded-2xl text-xs font-bold transition-all cursor-pointer">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {aiMessages.map((msg, i)=>(
+                  <div key={i} className={`flex ${msg.role==="user"?"justify-end":"justify-start"}`}>
+                    <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm font-semibold ${msg.role==="user"?"bg-[#004346] text-white rounded-br-md":"bg-gray-100 text-gray-800 rounded-bl-md"}`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {aiLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-gray-500 font-semibold animate-pulse">Thinking...</div>
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-gray-100 px-5 sm:px-8 py-4">
+                <form onSubmit={async e=>{
+                  e.preventDefault();
+                  if(!aiInput.trim()||aiLoading) return;
+                  const q=aiInput.trim(); setAiInput(""); setAiMessages(p=>[...p,{role:"user",content:q}]); setAiLoading(true);
+                  try {
+                    const res = await axios.post(`${API}/ai/chat`, {message:q, context:{medicines:medicines.filter(m=>!m.is_deleted).map(m=>m.name).join(", "), adherence_pct:adherence.adherence_pct}}, {headers:{Authorization:`Bearer ${token}`}});
+                    setAiMessages(p=>[...p,{role:"assistant",content:res.data?.reply||res.data?.response||"I can help with that! However, please consult your doctor for medical advice."}]);
+                  } catch {
+                    setAiMessages(p=>[...p,{role:"assistant",content:`Based on your profile, you have ${medicines.filter(m=>!m.is_deleted).length} active medicines with ${adherence.adherence_pct}% adherence. For specific medical questions, please consult your healthcare provider.`}]);
+                  } finally { setAiLoading(false); }
+                }} className="flex gap-2">
+                  <input value={aiInput} onChange={e=>setAiInput(e.target.value)} placeholder="Ask PillSync AI anything..." className="flex-1 px-4 py-3 rounded-2xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold outline-none focus:border-[#508991] transition-colors"/>
+                  <button type="submit" disabled={aiLoading||!aiInput.trim()} className="px-5 py-3 rounded-2xl bg-[#004346] hover:bg-[#508991] text-white font-bold text-sm cursor-pointer transition-all disabled:opacity-50 shrink-0">Send</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ████ EMERGENCY CONTACTS TAB ████ */}
+        {tab === "emergency" && (
+          <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100">
+            <div className="border-b border-gray-100 pb-4 mb-5 sm:mb-6">
+              <h3 className="font-extrabold text-lg text-[#004346] flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                Emergency Contacts
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">People to contact in case of a medical emergency.</p>
+            </div>
+            <div className="space-y-3">
+              {emergencyContacts.length === 0 ? (
+                <div className="text-center py-12">
+                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                  <p className="text-sm font-bold text-gray-400">No emergency contacts added yet</p>
+                  <p className="text-xs text-gray-300 mt-1">Add contacts who should be notified in emergencies.</p>
+                </div>
+              ) : emergencyContacts.map((c,i)=>(
+                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                  <div className="w-10 h-10 rounded-xl bg-[#D6F3F4] text-[#004346] font-extrabold flex items-center justify-center uppercase text-sm">{c.name?.slice(0,2)}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#004346]">{c.name}</p>
+                    <p className="text-xs text-gray-400">{c.phone} • {c.relation}</p>
+                  </div>
+                  <button onClick={()=>setEmergencyContacts(p=>p.filter((_,j)=>j!==i))} className="text-rose-400 hover:text-rose-600 cursor-pointer"><Trash c="w-4 h-4"/></button>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={e=>{
+              e.preventDefault();
+              const fd=new FormData(e.target);
+              const name=fd.get("name"), phone=fd.get("phone"), relation=fd.get("relation");
+              if(!name||!phone) return;
+              setEmergencyContacts(p=>[...p,{name,phone,relation:relation||"Other"}]);
+              e.target.reset();
+              showToast("Emergency contact added!");
+            }} className="mt-6 p-4 rounded-2xl bg-[#D6F3F4]/40 border border-[#508991]/15">
+              <p className="text-[10px] font-extrabold text-[#004346] uppercase tracking-wide mb-3">Add New Contact</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input name="name" placeholder="Full Name" className="input text-xs" required/>
+                <input name="phone" placeholder="Phone Number" type="tel" className="input text-xs" required/>
+                <input name="relation" placeholder="Relation (e.g. Spouse, Parent)" className="input text-xs"/>
+              </div>
+              <button type="submit" className="mt-3 px-5 py-2.5 rounded-2xl bg-[#004346] hover:bg-[#508991] text-white font-bold text-xs cursor-pointer transition-all">Add Contact</button>
+            </form>
+          </div>
+        )}
+
+        {/* ████ REFILL PREDICTOR TAB ████ */}
+        {tab === "refill" && (
+          <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100">
+            <div className="border-b border-gray-100 pb-4 mb-5">
+              <h3 className="font-extrabold text-lg text-[#004346] flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                AI Refill Prediction Engine
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">Smart predictions for when you'll need medicine refills.</p>
+            </div>
+            <div className="space-y-3">
+              {medicines.filter(m=>!m.is_deleted).length === 0 ? (
+                <p className="text-sm text-gray-400 font-semibold text-center py-8">No active medicines to predict refills for.</p>
+              ) : medicines.filter(m=>!m.is_deleted).map(med=>{
+                const stockNum = parseFloat(String(med.stock||"0").replace(/[^0-9.]/g,""));
+                const timesPerDay = med.times_per_day || 1;
+                const doseSize = parseFloat(String(med.dosage||"1").replace(/[^0-9.]/g,"")) || 1;
+                const dailyUse = timesPerDay * doseSize;
+                const daysLeft = dailyUse > 0 ? Math.floor(stockNum / dailyUse) : 999;
+                const urgent = daysLeft <= 5;
+                const warn = daysLeft <= 14;
+                return (
+                  <div key={med.id} className={`p-4 rounded-2xl border ${urgent?"bg-rose-50 border-rose-200":warn?"bg-amber-50 border-amber-200":"bg-gray-50 border-gray-100"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FormIcon formulation={med.formulation} c="w-5 h-5 text-[#004346]"/>
+                        <div>
+                          <p className="text-sm font-bold text-[#004346]">{med.name}</p>
+                          <p className="text-[10px] text-gray-400 capitalize">{med.category} • {med.dosage||"—"}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-sm font-extrabold ${urgent?"text-rose-600":warn?"text-amber-600":"text-emerald-600"}`}>{stockNum > 0 ? `${daysLeft} days left` : "Out of stock"}</p>
+                        <p className="text-[10px] text-gray-400">Stock: {med.stock || "—"} • {timesPerDay}x daily</p>
+                      </div>
+                    </div>
+                    {urgent && <p className="text-xs text-rose-600 font-bold mt-2">⚠️ Refill urgently needed — running out in {daysLeft} day(s)!</p>}
+                    {!urgent && warn && <p className="text-xs text-amber-600 font-bold mt-2">⏰ Consider refilling soon — {daysLeft} day(s) supply remaining.</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>{/* end main content */}
+      </div>{/* end flex layout */}
+
+      {/* ── TOAST ── */}
       {toast && (
         <div className="fixed bottom-4 sm:bottom-6 right-3 sm:right-6 z-50 animate-[fadeIn_.2s_ease] max-w-[calc(100vw-24px)] sm:max-w-xs">
           <div className={`flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 rounded-2xl border shadow-xl ${toast.type==="success"?"bg-emerald-50 border-emerald-200 text-emerald-800":"bg-red-50 border-red-200 text-red-800"}`}>
