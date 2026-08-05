@@ -1615,6 +1615,7 @@ export default function Dashboard() {
   const [aiMessages, setAiMessages] = useState([]);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
 
   // Emergency Contacts state persisted in localStorage
   const [emergencyContacts, setEmergencyContacts] = useState(() => {
@@ -1627,6 +1628,14 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem("pillsync_emergency_contacts", JSON.stringify(emergencyContacts));
   }, [emergencyContacts]);
+
+  // Floating AI Chatbot auto-scroll ref and effect
+  const floatingChatEndRef = useRef(null);
+  useEffect(() => {
+    if (aiChatOpen && floatingChatEndRef.current) {
+      floatingChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [aiMessages, aiChatOpen]);
 
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [dateInput,    setDateInput]    = useState(todayStr());
@@ -1791,6 +1800,125 @@ export default function Dashboard() {
       }
     } catch { showToast("Delete failed", "error"); }
     setDeleteConfirm(null);
+  };
+
+  const exportToCSV = () => {
+    if (history.length === 0) {
+      showToast("No data to export", "error");
+      return;
+    }
+    const headers = ["Medicine", "Date", "Scheduled Time", "Status", "Logged At"];
+    const rows = history.map(log => [
+      log.medicine_name || "—",
+      log.log_date || log.taken_at?.slice(0, 10) || "—",
+      log.scheduled_time || "—",
+      log.status || "—",
+      log.taken_at || "—"
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `pillsync_adherence_report_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Report exported as CSV!");
+  };
+
+  const exportToPDF = () => {
+    if (history.length === 0) {
+      showToast("No data to export", "error");
+      return;
+    }
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      showToast("Pop-up blocked! Please allow pop-ups to export reports.", "error");
+      return;
+    }
+    
+    const patientName = vitalsPatient?.name || user?.name || "Patient";
+    const patientEmail = vitalsPatient?.email || user?.email || "—";
+    
+    const total = history.length;
+    const taken = history.filter(h => h.status === "taken").length;
+    const missed = history.filter(h => h.status === "missed").length;
+    const pct = total > 0 ? Math.round((taken / total) * 100) : 0;
+
+    const rowsHtml = history.map(log => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.medicine_name || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.log_date || log.taken_at?.slice(0, 10) || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.scheduled_time || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: ${log.status === "taken" ? "#065f46" : "#991b1b"};">${log.status || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.taken_at || "—"}</td>
+      </tr>
+    `).join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>PillSync Medication Adherence Report</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #172a3a; margin: 40px; line-height: 1.5; }
+            h1 { color: #004346; margin-bottom: 5px; }
+            h2 { color: #508991; font-size: 16px; margin-top: 0; margin-bottom: 25px; }
+            .info-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+            .info-card { background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { text-align: left; padding: 12px 10px; background: #004346; color: white; font-size: 11px; text-transform: uppercase; }
+            .badge { display: inline-block; padding: 12px 20px; background: #d6f3f4; color: #004346; border-radius: 12px; font-weight: bold; font-size: 16px; margin-bottom: 25px; border: 1px solid #508991/20; }
+          </style>
+        </head>
+        <body>
+          <h1>PillSync Adherence Report</h1>
+          <h2>Generated on ${new Date().toLocaleDateString()}</h2>
+          
+          <div class="info-grid">
+            <div class="info-card">
+              <strong>Patient Details</strong><br/>
+              Name: ${patientName}<br/>
+              Email: ${patientEmail}<br/>
+              Blood Group: ${vitalsPatient?.blood_group || "—"}
+            </div>
+            <div class="info-card">
+              <strong>Report Summary</strong><br/>
+              Total Logged Doses: ${total}<br/>
+              Taken Doses: ${taken}<br/>
+              Missed Doses: ${missed}
+            </div>
+          </div>
+          
+          <div class="badge">
+            Overall Adherence Rate: ${pct}%
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Medicine</th>
+                <th>Scheduled Date</th>
+                <th>Scheduled Time</th>
+                <th>Status</th>
+                <th>Logged At</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const toggleStatus = async (med_id, scheduled_time, currentStatus, medName) => {
@@ -2394,13 +2522,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* AI Refill Prediction Engine — bottom of overview */}
-            <RefillPredictionWidget
-              token={token}
-              patientId={effectivePatientId}
-              showToast={showToast}
-              loadMedicines={loadSchedule}
-            />
           </div>
         )}
 
@@ -2564,20 +2685,33 @@ export default function Dashboard() {
               token={token}
               patientId={effectivePatientId}
             />
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-[24px] border border-gray-100 shadow-xs">
               <div>
                 <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Medication Progress</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Track adherence and view your 7-day report.</p>
               </div>
-              <div className="flex gap-1.5 bg-gray-100 p-1.5 rounded-2xl border border-gray-200 w-fit shadow-inner">
-                <button onClick={() => setProgressSubTab("chart")}
-                  className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${progressSubTab === "chart" ? "bg-[#004346] text-white shadow-md shadow-[#004346]/20" : "text-gray-500 hover:text-[#004346] hover:bg-white/60"}`}>
-                  <BarChart c="w-4 h-4"/> Chart View
-                </button>
-                <button onClick={() => setProgressSubTab("list")}
-                  className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all ${progressSubTab === "list" ? "bg-[#004346] text-white shadow-md shadow-[#004346]/20" : "text-gray-500 hover:text-[#004346] hover:bg-white/60"}`}>
-                  <ListIcon c="w-4 h-4"/> List View
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1 bg-gray-100 p-1.5 rounded-xl border border-gray-200 shadow-inner">
+                  <button onClick={() => setProgressSubTab("chart")}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${progressSubTab === "chart" ? "bg-[#004346] text-white shadow-sm" : "text-gray-500 hover:text-[#004346]"}`}>
+                    <BarChart c="w-3.5 h-3.5"/> Chart
+                  </button>
+                  <button onClick={() => setProgressSubTab("list")}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${progressSubTab === "list" ? "bg-[#004346] text-white shadow-sm" : "text-gray-500 hover:text-[#004346]"}`}>
+                    <ListIcon c="w-3.5 h-3.5"/> List
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button onClick={exportToCSV}
+                    className="cursor-pointer flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-teal-200 text-[#004346] bg-teal-50/50 hover:bg-teal-50 text-xs font-extrabold transition-all">
+                    CSV Export
+                  </button>
+                  <button onClick={exportToPDF}
+                    className="cursor-pointer flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#004346] hover:bg-[#508991] text-white text-xs font-extrabold transition-all shadow-sm">
+                    PDF Export
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2908,8 +3042,8 @@ export default function Dashboard() {
                   if(!aiInput.trim()||aiLoading) return;
                   const q=aiInput.trim(); setAiInput(""); setAiMessages(p=>[...p,{role:"user",content:q}]); setAiLoading(true);
                   try {
-                    const res = await axios.post(`${API}/ai/chat`, {message:q, context:{medicines:medicines.filter(m=>!m.is_deleted).map(m=>m.name).join(", "), adherence_pct:adherence.adherence_pct}}, {headers:{Authorization:`Bearer ${token}`}});
-                    setAiMessages(p=>[...p,{role:"assistant",content:res.data?.reply||res.data?.response||"I can help with that! However, please consult your doctor for medical advice."}]);
+                    const res = await axios.post(`${API}/chat/ask`, { query: q }, { headers: { Authorization: `Bearer ${token}` } });
+                    setAiMessages(p=>[...p,{role:"assistant",content:res.data?.response||res.data?.reply||"I can help with that! However, please consult your doctor for medical advice."}]);
                   } catch {
                     setAiMessages(p=>[...p,{role:"assistant",content:`Based on your profile, you have ${medicines.filter(m=>!m.is_deleted).length} active medicines with ${adherence.adherence_pct}% adherence. For specific medical questions, please consult your healthcare provider.`}]);
                   } finally { setAiLoading(false); }
@@ -2972,51 +3106,133 @@ export default function Dashboard() {
 
         {/* ████ REFILL PREDICTOR TAB ████ */}
         {tab === "refill" && (
-          <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100">
-            <div className="border-b border-gray-100 pb-4 mb-5">
-              <h3 className="font-extrabold text-lg text-[#004346] flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                AI Refill Prediction Engine
-              </h3>
-              <p className="text-xs text-gray-400 mt-0.5">Smart predictions for when you'll need medicine refills.</p>
-            </div>
-            <div className="space-y-3">
-              {medicines.filter(m=>!m.is_deleted).length === 0 ? (
-                <p className="text-sm text-gray-400 font-semibold text-center py-8">No active medicines to predict refills for.</p>
-              ) : medicines.filter(m=>!m.is_deleted).map(med=>{
-                const stockNum = parseFloat(String(med.stock||"0").replace(/[^0-9.]/g,""));
-                const timesPerDay = med.times_per_day || 1;
-                const doseSize = parseFloat(String(med.dosage||"1").replace(/[^0-9.]/g,"")) || 1;
-                const dailyUse = timesPerDay * doseSize;
-                const daysLeft = dailyUse > 0 ? Math.floor(stockNum / dailyUse) : 999;
-                const urgent = daysLeft <= 5;
-                const warn = daysLeft <= 14;
-                return (
-                  <div key={med.id} className={`p-4 rounded-2xl border ${urgent?"bg-rose-50 border-rose-200":warn?"bg-amber-50 border-amber-200":"bg-gray-50 border-gray-100"}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FormIcon formulation={med.formulation} c="w-5 h-5 text-[#004346]"/>
-                        <div>
-                          <p className="text-sm font-bold text-[#004346]">{med.name}</p>
-                          <p className="text-[10px] text-gray-400 capitalize">{med.category} • {med.dosage||"—"}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-sm font-extrabold ${urgent?"text-rose-600":warn?"text-amber-600":"text-emerald-600"}`}>{stockNum > 0 ? `${daysLeft} days left` : "Out of stock"}</p>
-                        <p className="text-[10px] text-gray-400">Stock: {med.stock || "—"} • {timesPerDay}x daily</p>
-                      </div>
-                    </div>
-                    {urgent && <p className="text-xs text-rose-600 font-bold mt-2">⚠️ Refill urgently needed — running out in {daysLeft} day(s)!</p>}
-                    {!urgent && warn && <p className="text-xs text-amber-600 font-bold mt-2">⏰ Consider refilling soon — {daysLeft} day(s) supply remaining.</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <RefillPredictionWidget
+            token={token}
+            patientId={effectivePatientId}
+            showToast={showToast}
+            loadMedicines={loadSchedule}
+          />
         )}
 
       </div>{/* end main content */}
       </div>{/* end flex layout */}
+
+      {/* ── FLOATING AI ASSISTANT CHATBOT ── */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        {/* Chat Window */}
+        {aiChatOpen && (
+          <div className="mb-4 w-96 max-w-[calc(100vw-32px)] h-[500px] bg-white rounded-3xl border border-gray-100 shadow-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease]">
+            {/* Header */}
+            <div className="bg-[#004346] text-white px-5 py-4 flex items-center justify-between shadow-md shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                  <svg className="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm leading-tight">PillSync AI Assistant</h4>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>
+                    <p className="text-[10px] text-white/70 font-semibold">Ready to help</p>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setAiChatOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 flex items-center justify-center transition-all cursor-pointer">
+                <X c="w-4 h-4 text-white"/>
+              </button>
+            </div>
+
+            {/* Message Area */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
+              {aiMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center border border-[#508991]/10">
+                    <svg className="w-6 h-6 text-[#004346]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-sm text-[#004346]">Your AI Companion</p>
+                    <p className="text-xs text-gray-400 mt-1 max-w-[200px]">Ask me anything about your active medicines, schedules, or vitals!</p>
+                  </div>
+                </div>
+              ) : (
+                aiMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`p-3.5 rounded-2xl text-xs max-w-[85%] leading-relaxed shadow-xs ${
+                      msg.role === "user" 
+                        ? "bg-[#004346] text-white rounded-tr-none font-medium" 
+                        : "bg-white text-[#172A3A] border border-gray-100 rounded-tl-none font-medium"
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))
+              )}
+              {aiLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-100 p-3.5 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-xs">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}/>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}/>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}/>
+                  </div>
+                </div>
+              )}
+              <div ref={floatingChatEndRef} />
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const q = aiInput.trim();
+              if (!q) return;
+              setAiInput("");
+              setAiMessages(p => [...p, { role: "user", content: q }]);
+              setAiLoading(true);
+              try {
+                const res = await axios.post(`${API}/chat/ask`, { query: q }, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                setAiMessages(p => [...p, { role: "assistant", content: res.data?.response || res.data?.reply || "I am here to help! Consult your doctor for medical advice." }]);
+              } catch {
+                setAiMessages(p => [...p, { role: "assistant", content: `Based on your profile, you have ${medicines.filter(m=>!m.is_deleted).length} active medicines. For medical advice, please consult your physician.` }]);
+              } finally {
+                setAiLoading(false);
+              }
+            }} className="p-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0">
+              <input
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-gray-50 border border-gray-100 hover:border-gray-200 focus:border-[#004346] focus:bg-white rounded-2xl px-4 py-2.5 text-xs font-bold text-[#004346] outline-none transition-all placeholder:text-gray-400"
+              />
+              <button type="submit" disabled={aiLoading} className="w-9 h-9 rounded-xl bg-[#004346] hover:bg-[#508991] text-white flex items-center justify-center transition-all cursor-pointer disabled:opacity-55 shrink-0">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Floating Bubble FAB Button */}
+        <button
+          onClick={() => setAiChatOpen(o => !o)}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl hover:scale-105 border-4 border-white cursor-pointer ${
+            aiChatOpen ? "bg-rose-500 hover:bg-rose-600 rotate-90 text-white" : "bg-[#004346] hover:bg-[#508991] text-white"
+          }`}
+          title="Ask AI Assistant"
+        >
+          {aiChatOpen ? (
+            <X c="w-6 h-6 text-white"/>
+          ) : (
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+          )}
+        </button>
+      </div>
 
       {/* ── TOAST ── */}
       {toast && (
