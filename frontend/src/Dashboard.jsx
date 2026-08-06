@@ -263,7 +263,7 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
     const daysLeft = Math.floor(stockNum / (dosesPerDay * doseSize));
     if (daysLeft <= 0) return null;
     const unit = ["liquid","lotion"].includes(form.formulation) ? "ml" : form.formulation === "spray" ? "sprays" : form.formulation === "injection" ? "doses" : "tablet(s)";
-    return `${daysLeft} day(s) supply — ${dosesPerDay}x daily × ${doseSize} ${unit}/dose`;
+    return `${daysLeft} day(s) supply — ${dosesPerDay}x daily ├ù ${doseSize} ${unit}/dose`;
   };
 
   const fetchPrediction = async (diseaseName) => {
@@ -567,6 +567,7 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
     age:    patient?.age !== undefined ? String(patient.age) : "",
     weight: patient?.weight ? String(patient.weight).replace(" kg","") : "",
     height: patient?.height ? String(patient.height).replace(" cm","") : "",
+    blood_group: patient?.blood_group || "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -579,6 +580,7 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
         age:    form.age    ? parseInt(form.age)   : null,
         weight: form.weight ? `${form.weight} kg`  : null,
         height: form.height ? `${form.height} cm`  : null,
+        blood_group: form.blood_group || null,
       };
       const res = await axios.patch(`${API}/users/patients/${patient.id}`, payload, {
         headers: { Authorization: `Bearer ${token}` }
@@ -614,6 +616,8 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
             <div><label className="label">Height (cm)</label>
               <input type="number" value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="input" placeholder="170"/></div>
           </div>
+          <div><label className="label">Blood Group</label>
+            <input value={form.blood_group} onChange={e=>setForm({...form,blood_group:e.target.value})} className="input" placeholder="e.g. O+, A-"/></div>
           <button type="submit" disabled={loading}
             className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${loading?"bg-[#508991]":"bg-[#004346] hover:bg-[#508991]"}`}>
             {loading ? "Saving..." : "Save Patient Info"}
@@ -626,7 +630,7 @@ function EditPatientModal({ patient, onClose, onSave, token }) {
 
 // ─── Add Patient Modal (Caregiver) ───────────────────────
 function AddPatientModal({ onClose, onSave, token }) {
-  const [form, setForm] = useState({ name:"", email:"", password:"", phone:"", gender:"female", age:"", weight:"", height:"" });
+  const [form, setForm] = useState({ name:"", email:"", password:"", phone:"", gender:"female", age:"", weight:"", height:"", blood_group:"" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -642,7 +646,15 @@ function AddPatientModal({ onClose, onSave, token }) {
         age: form.age ? parseInt(form.age) : null,
         weight: form.weight ? `${form.weight} kg` : null,
         height: form.height ? `${form.height} cm` : null,
+        blood_group: form.blood_group || null,
       });
+      const newPatientId = res.data?.user?.id;
+      // Auto-link new patient to this caregiver
+      if (newPatientId && token) {
+        try {
+          await axios.post(`${API}/users/patients/link/${newPatientId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        } catch {}
+      }
       onSave(res.data); onClose();
     } catch (err) { setError(err.response?.data?.detail || "Registration failed"); }
     finally { setLoading(false); }
@@ -681,6 +693,8 @@ function AddPatientModal({ onClose, onSave, token }) {
                 <input autoComplete="off" type="number" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})} className="input text-xs" placeholder="kg"/></div>
               <div><label className="label">Height (cm)</label>
                 <input autoComplete="off" type="number" value={form.height} onChange={e=>setForm({...form,height:e.target.value})} className="input text-xs" placeholder="cm"/></div>
+              <div className="col-span-2"><label className="label">Blood Group</label>
+                <input autoComplete="off" value={form.blood_group} onChange={e=>setForm({...form,blood_group:e.target.value})} className="input text-xs" placeholder="e.g. O+, A-"/></div>
             </div>
           </div>
           <button type="submit" disabled={loading}
@@ -688,6 +702,38 @@ function AddPatientModal({ onClose, onSave, token }) {
             {loading ? "Creating Patient..." : "Create Patient Account"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Delete Account Warning Modal ─────────────────────────
+function DeleteAccountModal({ onClose, onConfirm, loading }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_.2s_ease]">
+      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-md p-6 sm:p-8 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"><X c="w-3.5 h-3.5"/></button>
+        <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-4">
+          <AlertIcon c="w-6 h-6"/>
+        </div>
+        <h3 className="text-xl font-extrabold text-gray-900 mb-1">Delete Your Account?</h3>
+        <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+          This will <strong className="text-rose-600">permanently delete your profile</strong>, all scheduled medicines, adherence progress, and intake history. This action <strong className="text-rose-600">CANNOT</strong> be undone.
+        </p>
+        <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl text-xs font-semibold text-rose-800 mb-5 flex items-center gap-2">
+          <Trash c="w-4 h-4 text-rose-600 shrink-0"/>
+          <span>Warning: All stored medicines and health records will be lost immediately.</span>
+        </div>
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} disabled={loading}
+            className="flex-1 py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm cursor-pointer transition-all">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={loading}
+            className="flex-1 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm cursor-pointer transition-all shadow-md shadow-rose-600/30">
+            {loading ? "Deleting..." : "Yes, Delete Account"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -703,9 +749,839 @@ function BackButton({ onBack }) {
   );
 }
 
-// ════════════════════════════════════════════════════
+// ─── Patients Tab (Search + Link + Unlink + Delete) ───────
+function PatientsTab({ role, token, patientList, loadPatients, selectedPatientId, setSelectedPatientId, goTo, showToast, addNotif, setShowAddPatient, setEditingPatient, setDeleteConfirm }) {
+  const [searchQ,             setSearchQ]             = useState("");
+  const [searchResults,       setSearchResults]       = useState([]);
+  const [searching,           setSearching]           = useState(false);
+  const [showSearch,          setShowSearch]          = useState(false);
+  const [localPatientSearch,  setLocalPatientSearch]  = useState("");
+
+  const doSearch = async (q) => {
+    setSearchQ(q);
+    if (!q.trim()) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await axios.get(`${API}/users/patients/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+      setSearchResults(res.data);
+    } catch {} finally { setSearching(false); }
+  };
+
+  const handleLink = async (patientId, patientName) => {
+    try {
+      await axios.post(`${API}/users/patients/link/${patientId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      showToast(`${patientName} linked to your patients!`);
+      addNotif(`Patient "${patientName}" linked to your care list.`, "success", "Patient Linked");
+      loadPatients();
+      // Refresh search results to update is_linked flag
+      if (searchQ.trim()) doSearch(searchQ);
+    } catch (err) { showToast(err.response?.data?.detail || "Failed to link", "error"); }
+  };
+
+  const handleUnlink = async (patientId, patientName) => {
+    try {
+      await axios.delete(`${API}/users/patients/unlink/${patientId}`, { headers: { Authorization: `Bearer ${token}` } });
+      showToast(`${patientName} unlinked from your patients.`);
+      addNotif(`Patient "${patientName}" removed from your care list.`, "info");
+      loadPatients();
+      if (searchQ.trim()) doSearch(searchQ);
+    } catch (err) { showToast(err.response?.data?.detail || "Failed to unlink", "error"); }
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Patient List</h2>
+        <div className="flex items-center gap-2">
+          {/* Only caregivers use Find & Link — admin sees all patients by default */}
+          {role === "caregiver" && (
+            <button onClick={() => setShowSearch(s => !s)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all shadow cursor-pointer border ${showSearch ? "bg-[#004346] text-white border-[#004346]" : "bg-white text-[#004346] border-gray-200 hover:border-[#508991]"}`}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              {showSearch ? "Hide Search" : "Find & Link Patient"}
+            </button>
+          )}
+          <button onClick={() => setShowAddPatient(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#004346] hover:bg-[#508991] text-white rounded-2xl text-xs font-extrabold transition-all shadow cursor-pointer">
+            <Plus c="w-3.5 h-3.5"/> Add Patient
+          </button>
+        </div>
+      </div>
+
+      {/* Search Panel (Caregiver only — admin already sees all) */}
+      {role === "caregiver" && showSearch && (
+        <div className="bg-white rounded-2xl border border-[#508991]/30 shadow-sm p-4 sm:p-5 space-y-3">
+          <p className="text-xs font-extrabold text-[#004346] uppercase tracking-wide">Search & Link Existing Patient</p>
+          <div className="relative">
+            <input
+              value={searchQ}
+              onChange={e => doSearch(e.target.value)}
+              placeholder="Type patient name or email..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 outline-none focus:border-[#508991] bg-gray-50 transition-all"
+            />
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 animate-pulse">Searching...</span>}
+          </div>
+          {searchQ.trim() && searchResults.length === 0 && !searching && (
+            <p className="text-xs text-gray-400 font-semibold text-center py-3">No patients found for "{searchQ}"</p>
+          )}
+          {searchResults.length > 0 && (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {searchResults.map(pt => (
+                <div key={pt.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-[#508991]/30 transition-all">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-extrabold text-sm uppercase shrink-0">{pt.name?.slice(0,1)}</div>
+                    <div>
+                      <p className="font-bold text-[#004346] text-sm">{pt.name}</p>
+                      <p className="text-[10px] text-gray-400">{pt.email}</p>
+                    </div>
+                  </div>
+                  {pt.is_linked ? (
+                    <span className="px-3 py-1.5 bg-emerald-50 text-emerald-600 text-xs font-extrabold rounded-xl border border-emerald-100">Linked</span>
+                  ) : (
+                    <button onClick={() => handleLink(pt.id, pt.name)}
+                      className="px-3 py-1.5 bg-[#004346] text-white text-xs font-extrabold rounded-xl hover:bg-[#508991] transition-all cursor-pointer shadow-sm">
+                      + Link
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Patient Search Bar (Admin & Caregiver) */}
+      <div className="relative mb-3">
+        <div className="flex items-center bg-white border-2 border-gray-100 focus-within:border-[#508991] rounded-2xl px-4 py-2.5 shadow-sm transition-all">
+          <svg className="w-4 h-4 text-gray-400 shrink-0 mr-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input
+            value={localPatientSearch}
+            onChange={e => setLocalPatientSearch(e.target.value)}
+            placeholder={role === "admin" ? "Search patient list by name or email..." : "Search your linked patients..."}
+            className="w-full bg-transparent text-xs font-semibold text-gray-700 outline-none placeholder:text-gray-400"
+          />
+          {localPatientSearch && (
+            <button onClick={() => setLocalPatientSearch("")} className="text-gray-400 hover:text-gray-600 cursor-pointer ml-2">
+              <X c="w-4 h-4"/>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* My Patients List */}
+      {role === "admin" && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-2xl text-xs font-semibold text-blue-700 mb-3">
+          <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Admin view: showing all registered patients. Use Edit to update vitals, Delete to remove an account.
+        </div>
+      )}
+      {(() => {
+        const displayList = localPatientSearch.trim()
+          ? patientList.filter(p => (p.name||'').toLowerCase().includes(localPatientSearch.toLowerCase()) || (p.email||'').toLowerCase().includes(localPatientSearch.toLowerCase()))
+          : patientList;
+        return displayList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-14 sm:p-16 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
+            <User c="w-12 h-12 text-gray-200 mb-4"/>
+            <p className="text-sm font-bold text-gray-400">{localPatientSearch ? `No patients match "${localPatientSearch}"` : role === "caregiver" ? "No linked patients yet." : "No patients registered yet."}</p>
+            <p className="text-xs text-gray-300 mt-1">{role === "caregiver" && !localPatientSearch ? "Use \"Find & Link Patient\" to add existing patients, or create a new one." : ""}</p>
+            {!localPatientSearch && <button onClick={() => setShowAddPatient(true)} className="mt-4 px-5 py-2.5 bg-[#004346] text-white rounded-2xl text-xs font-extrabold cursor-pointer hover:bg-[#508991] transition-all">Add Patient</button>}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            {displayList.map(pt => (
+            <div key={pt.id} className="bg-white p-4 sm:p-6 rounded-[24px] border border-gray-100 shadow-sm space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-extrabold uppercase">{pt.name.slice(0,1)}</div>
+                  <div><h3 className="font-extrabold text-[#004346] text-sm">{pt.name}</h3><p className="text-xs text-gray-400">{pt.email}</p></div>
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  <button onClick={() => { setSelectedPatientId(pt.id); goTo("overview"); showToast(`Switched to ${pt.name}`); }}
+                    className="px-3 py-1.5 bg-[#004346] hover:bg-[#508991] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer">Select</button>
+                  <button onClick={() => setEditingPatient(pt)}
+                    className="w-8 h-8 rounded-xl bg-teal-50 text-[#004346] hover:bg-teal-600 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-teal-100" title="Edit patient"><Edit c="w-3.5 h-3.5"/></button>
+                  {/* Unlink only for Caregivers — admin sees all patients without linking */}
+                  {role === "caregiver" && (
+                    <button onClick={() => handleUnlink(pt.id, pt.name)}
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white text-[10px] font-extrabold transition-all cursor-pointer border border-amber-100" title="Remove from your care list (patient account preserved)">
+                      Unlink
+                    </button>
+                  )}
+                  <button onClick={() => setDeleteConfirm({type:"patient",id:pt.id,name:pt.name})}
+                    className="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-red-100" title="Delete patient account"><Trash c="w-3.5 h-3.5"/></button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold text-gray-500 border-t border-gray-50 pt-3">
+                <div>Gender: <span className="text-[#004346] capitalize">{pt.gender||"—"}</span></div>
+                <div>Age: <span className="text-[#004346]">{pt.age?`${pt.age} yrs`:"—"}</span></div>
+                <div>Height: <span className="text-[#004346]">{pt.height||"—"}</span></div>
+                <div>Weight: <span className="text-[#004346]">{pt.weight||"—"}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+
+// ─── Caregiver List Tab (Admin Only) ──────────────────────
+function CaregiverListTab({ token, showToast, addNotif, setEditingPatient }) {
+  const [caregivers,    setCaregivers]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [searchQ,       setSearchQ]       = useState("");
+  const [deleteId,      setDeleteId]      = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const loadCaregivers = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/users/caregivers`, { headers: { Authorization: `Bearer ${token}` } });
+      setCaregivers(res.data);
+    } catch {
+      showToast("Failed to load caregivers", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadCaregivers(); }, []);
+
+  const handleDelete = async (cgId, cgName) => {
+    setDeleteLoading(true);
+    try {
+      await axios.delete(`${API}/users/caregivers/${cgId}`, { headers: { Authorization: `Bearer ${token}` } });
+      showToast(`${cgName}'s account deleted.`);
+      addNotif(`Caregiver "${cgName}" account removed.`, "info");
+      setCaregivers(prev => prev.filter(c => c.id !== cgId));
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Failed to delete", "error");
+    } finally {
+      setDeleteLoading(false);
+      setDeleteId(null);
+    }
+  };
+
+  const filtered = caregivers.filter(cg => {
+    if (!searchQ.trim()) return true;
+    const q = searchQ.toLowerCase();
+    return (cg.name||'').toLowerCase().includes(q) || (cg.email||'').toLowerCase().includes(q) || (cg.phone||'').toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Caregiver List</h2>
+          <p className="text-xs text-gray-400 mt-0.5">All registered caregivers and their assigned patients.</p>
+        </div>
+        <span className="px-3 py-1.5 bg-[#D6F3F4] text-[#004346] text-[10px] font-extrabold rounded-xl uppercase tracking-wide">
+          {caregivers.length} Caregiver{caregivers.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <div className="flex items-center bg-white border-2 border-gray-100 focus-within:border-[#508991] rounded-2xl px-4 py-2.5 shadow-sm transition-all">
+          <svg className="w-4 h-4 text-gray-400 shrink-0 mr-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input
+            value={searchQ}
+            onChange={e => setSearchQ(e.target.value)}
+            placeholder="Search caregiver by name, email or phone..."
+            className="w-full bg-transparent text-xs font-semibold text-gray-700 outline-none placeholder:text-gray-400"
+          />
+          {searchQ && (
+            <button onClick={() => setSearchQ("")} className="text-gray-400 hover:text-gray-600 cursor-pointer ml-2">
+              <X c="w-4 h-4"/>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-8 h-8 border-4 border-[#D6F3F4] border-t-[#004346] rounded-full animate-spin"/>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-14 sm:p-16 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
+          <User c="w-12 h-12 text-gray-200 mb-4"/>
+          <p className="text-sm font-bold text-gray-400">{searchQ ? `No caregivers match "${searchQ}"` : "No caregivers registered yet."}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map(cg => (
+            <div key={cg.id} className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#004346] to-[#508991] text-white font-extrabold text-base flex items-center justify-center uppercase shadow">
+                    {cg.name?.slice(0,1)}
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[#004346] text-sm">{cg.name}</h3>
+                    <p className="text-xs text-gray-400">{cg.email}</p>
+                    {cg.phone && <p className="text-xs text-gray-400">{cg.phone}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setEditingPatient({...cg, _isCaregiverEdit: true})}
+                    className="w-8 h-8 rounded-xl bg-teal-50 text-[#004346] hover:bg-teal-600 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-teal-100" title="Edit caregiver">
+                    <Edit c="w-3.5 h-3.5"/>
+                  </button>
+                  {deleteId === cg.id ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleDelete(cg.id, cg.name)} disabled={deleteLoading}
+                        className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[10px] font-extrabold cursor-pointer">
+                        {deleteLoading ? "..." : "Confirm"}
+                      </button>
+                      <button onClick={() => setDeleteId(null)}
+                        className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 text-[10px] font-extrabold cursor-pointer">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setDeleteId(cg.id)}
+                      className="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-red-100" title="Delete caregiver account">
+                      <Trash c="w-3.5 h-3.5"/>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Linked Patients Badge List */}
+              <div className="bg-gray-50/80 rounded-2xl p-3 border border-gray-100">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Assigned / Linked Patients ({cg.linked_patients?.length || 0})</p>
+                {cg.linked_patients?.length === 0 ? (
+                  <p className="text-xs text-gray-400 font-semibold italic">No patients linked yet</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {cg.linked_patients.map(pt => (
+                      <span key={pt.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#D6F3F4] text-[#004346] text-xs font-extrabold border border-[#508991]/15">
+                        <User c="w-3 h-3 text-[#508991]"/>{pt.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── OCR Upload & AI Prescription Parser Modal (Multi-Medicine) ────────────
+function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [extractedList, setExtractedList] = useState(null);
+  const [rawText, setRawText] = useState("");
+  const [editingIdx, setEditingIdx] = useState(null);
+
+  const handleFileChange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+    setError("");
+    if (f.type.startsWith("image/")) {
+      setPreview(URL.createObjectURL(f));
+    } else {
+      setPreview(null);
+    }
+  };
+
+  const handleScan = async () => {
+    if (!file) { setError("Please select a prescription photo or document"); return; }
+    setScanning(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post(`${API}/medicines/upload-ocr`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data"
+        }
+      });
+
+      const list = res.data?.medicines || [];
+      setRawText(res.data?.raw_text || "");
+
+      const formatted = list.map((m, idx) => ({
+        id: idx + 1,
+        name: m.name || `Medicine ${idx + 1}`,
+        dosage: m.dosage || "1 tablet",
+        category: m.category || m.disease_name || "Other",
+        disease_name: m.disease_name || m.category || "",
+        stock: m.stock ? String(m.stock) : "10",
+        formulation: m.formulation || "tablet",
+        start_date: m.start_date || todayStr(),
+        end_date: m.end_date || "",
+        times_per_day: m.times_per_day || (m.times ? m.times.length : 1),
+        times: m.times && m.times.length ? m.times : ["08:00 am"],
+        instructions: m.instructions || ""
+      }));
+
+      if (formatted.length === 0) {
+        formatted.push({
+          id: 1, name: "", dosage: "1 tablet", category: "Other", disease_name: "", stock: "10", formulation: "tablet", start_date: todayStr(), end_date: "", times_per_day: 1, times: ["08:00 am"], instructions: ""
+        });
+      }
+
+      setExtractedList(formatted);
+      showToast(`Prescription analyzed! Found ${formatted.length} medication(s).`);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to scan prescription image");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const updateMedicine = (index, key, val) => {
+    setExtractedList(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [key]: val };
+      return copy;
+    });
+  };
+
+  const removeMedicine = index => {
+    setExtractedList(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addEmptyMedicine = () => {
+    setExtractedList(prev => [
+      ...prev,
+      { id: Date.now(), name: "", dosage: "1 tablet", category: "Other", disease_name: "", stock: "10", formulation: "tablet", start_date: todayStr(), end_date: "", times_per_day: 1, times: ["08:00 am"], instructions: "" }
+    ]);
+    setEditingIdx(extractedList ? extractedList.length : 0);
+  };
+
+  const handleSaveAll = async () => {
+    if (!extractedList || extractedList.length === 0) { setError("No medicines to save"); return; }
+    const invalid = extractedList.find(m => !m.name.trim());
+    if (invalid) { setError("All medicines must have a name"); return; }
+
+    setSaving(true);
+    setError("");
+    try {
+      const q = patientId ? `?patient_id=${patientId}` : "";
+      let count = 0;
+
+      for (const item of extractedList) {
+        const payload = {
+          name: item.name.trim(),
+          dosage: item.dosage,
+          category: item.category || item.disease_name || "Other",
+          stock: parseInt(item.stock) || 10,
+          formulation: item.formulation || "tablet",
+          schedules: item.times.length ? item.times : ["08:00 am"],
+          start_date: item.start_date || todayStr(),
+          end_date: item.end_date || null,
+          description: item.instructions || null
+        };
+        const res = await axios.post(`${API}/medicines${q}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (onSave) onSave(res.data);
+        count++;
+      }
+
+      addNotif(`Added ${count} medication(s) from prescription scan.`, "success");
+      showToast(`Successfully added ${count} medication(s)`);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to save prescription medicines");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3">
+      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto relative animate-[fadeIn_.2s_ease]">
+        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"><X c="w-3.5 h-3.5"/></button>
+
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-bold">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </div>
+          <div>
+            <h2 className="text-xl font-extrabold text-[#004346]">Prescription OCR Multi-Scan</h2>
+            <p className="text-xs text-gray-400">Scans all medicines in your prescription image at once</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="my-4 px-4 py-3 bg-red-50 border border-red-100 rounded-2xl text-red-700 text-xs font-semibold flex items-center gap-2">
+            <AlertIcon c="w-4 h-4"/>{error}
+          </div>
+        )}
+
+        {!extractedList ? (
+          <div className="space-y-4 my-6">
+            <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center hover:border-[#508991] transition-all bg-gray-50/50">
+              {preview ? (
+                <div className="space-y-3">
+                  <img src={preview} alt="Prescription Preview" className="max-h-52 mx-auto rounded-xl shadow-sm border border-gray-200 object-contain"/>
+                  <p className="text-xs font-bold text-gray-500">{file?.name}</p>
+                </div>
+              ) : (
+                <div className="space-y-2 py-6">
+                  <svg className="w-12 h-12 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <p className="text-xs font-bold text-[#004346]">Upload prescription photo to extract all medicines</p>
+                  <p className="text-[10px] text-gray-400">Supports JPG, PNG, JPEG formats</p>
+                </div>
+              )}
+              <input type="file" accept="image/*" onChange={handleFileChange} className="mt-3 block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#004346] file:text-white hover:file:bg-[#508991] cursor-pointer"/>
+            </div>
+
+            <button onClick={handleScan} disabled={!file || scanning}
+              className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${!file || scanning ? "bg-gray-300" : "bg-[#004346] hover:bg-[#508991]"}`}>
+              {scanning ? "Extracting all the medicines..." : "Scan & Extract All Medicines"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4 my-4">
+            <div className="flex items-center justify-between p-3.5 bg-teal-50 border border-teal-100 rounded-2xl">
+              <div className="flex items-center gap-2">
+                <Check c="w-4 h-4 text-teal-600"/>
+                <span className="text-xs font-bold text-[#004346]">Extracted {extractedList.length} medicine(s) from prescription. Edit any item below:</span>
+              </div>
+              <button type="button" onClick={addEmptyMedicine}
+                className="px-3 py-1.5 rounded-xl bg-[#004346] text-white text-xs font-bold hover:bg-[#508991] transition-all cursor-pointer">
+                + Add Medicine
+              </button>
+            </div>
+
+            {/* List of extracted medicines */}
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {extractedList.map((item, idx) => (
+                <div key={item.id || idx} className="p-4 rounded-2xl border border-gray-200 bg-white shadow-xs space-y-3">
+                  <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-extrabold text-[#004346] uppercase">Medicine #{idx + 1}</span>
+                      <span className="px-2 py-0.5 rounded-md bg-[#D6F3F4] text-[#004346] text-[10px] font-extrabold uppercase">{item.formulation}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" onClick={() => setEditingIdx(editingIdx === idx ? null : idx)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold border border-teal-200 text-[#004346] hover:bg-teal-50 cursor-pointer">
+                        {editingIdx === idx ? "Collapse" : "Edit"}
+                      </button>
+                      {extractedList.length > 1 && (
+                        <button type="button" onClick={() => removeMedicine(idx)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer">
+                          <Trash c="w-4 h-4"/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {editingIdx === idx ? (
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <label className="label">Medicine Name *</label>
+                        <input value={item.name} onChange={e => updateMedicine(idx, "name", e.target.value)} className="input" placeholder="e.g. Stil CV 500mg" required/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="label">Dosage</label>
+                          <input value={item.dosage} onChange={e => updateMedicine(idx, "dosage", e.target.value)} className="input" placeholder="e.g. 1 tablet twice daily"/>
+                        </div>
+                        <div>
+                          <label className="label">Disease / Category</label>
+                          <input value={item.category} onChange={e => updateMedicine(idx, "category", e.target.value)} className="input" placeholder="e.g. Otitis Externa Left"/>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="label">Medicine Form</label>
+                          <select value={item.formulation} onChange={e => updateMedicine(idx, "formulation", e.target.value)} className="input">
+                            <option value="tablet">Tablet</option>
+                            <option value="capsule">Capsule</option>
+                            <option value="liquid">Liquid</option>
+                            <option value="ointment">Ointment</option>
+                            <option value="injection">Injection</option>
+                            <option value="drops">Drops</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">Start Date</label>
+                          <input type="date" value={item.start_date} onChange={e => updateMedicine(idx, "start_date", e.target.value)} className="input"/>
+                        </div>
+                        <div>
+                          <label className="label">End Date</label>
+                          <input type="date" value={item.end_date} onChange={e => updateMedicine(idx, "end_date", e.target.value)} className="input"/>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="label">Stock Count</label>
+                          <input type="number" min="0" value={item.stock} onChange={e => updateMedicine(idx, "stock", e.target.value)} className="input" placeholder="10"/>
+                        </div>
+                        <div>
+                          <label className="label">Times Per Day</label>
+                          <input type="number" min="1" max="6" value={item.times_per_day} onChange={e => updateMedicine(idx, "times_per_day", e.target.value)} className="input"/>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">Reminder Times (comma separated)</label>
+                        <input value={item.times.join(", ")} onChange={e => updateMedicine(idx, "times", e.target.value.split(",").map(s => s.trim()).filter(Boolean))} className="input" placeholder="08:00 am, 08:00 pm"/>
+                      </div>
+                      <div>
+                        <label className="label">Instructions / Notes</label>
+                        <input value={item.instructions} onChange={e => updateMedicine(idx, "instructions", e.target.value)} className="input" placeholder="e.g. Take BD/PC after food"/>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-xs text-gray-700">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <div><span className="text-gray-400 font-medium">Name:</span> <span className="font-extrabold text-[#004346]">{item.name || "—"}</span></div>
+                        <div><span className="text-gray-400 font-medium">Dosage:</span> <span className="font-bold text-gray-800">{item.dosage || "1 tablet"}</span></div>
+                        <div><span className="text-gray-400 font-medium">Disease / Category:</span> <span className="font-bold text-[#508991]">{item.category || "Other"}</span></div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-gray-100 text-[11px]">
+                        <div><span className="text-gray-400">Start Date:</span> <span className="font-semibold text-gray-800">{item.start_date || "Today"}</span></div>
+                        <div><span className="text-gray-400">End Date:</span> <span className="font-semibold text-gray-800">{item.end_date || "N/A"}</span></div>
+                        <div><span className="text-gray-400">Frequency:</span> <span className="font-bold text-gray-800">{item.times_per_day || item.times.length}x daily</span></div>
+                        <div><span className="text-gray-400">Stock:</span> <span className="font-extrabold text-[#004346]">{item.stock} units</span></div>
+                      </div>
+                      <div className="pt-1 border-t border-gray-100 text-[11px] flex flex-wrap items-center gap-3">
+                        <div><span className="text-gray-400">Reminder Times:</span> <span className="font-bold text-[#004346] bg-teal-50 px-2 py-0.5 rounded-md">{item.times.join(", ")}</span></div>
+                        {item.instructions && <div><span className="text-gray-400">Instructions:</span> <span className="font-medium text-gray-700 italic">{item.instructions}</span></div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {rawText && (
+              <div>
+                <label className="label">Raw Prescription OCR Output</label>
+                <p className="text-[10px] text-gray-500 font-mono bg-gray-50 p-2.5 rounded-xl border border-gray-100 max-h-20 overflow-y-auto whitespace-pre-wrap">{rawText}</p>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 pt-3">
+              <button type="button" onClick={() => setExtractedList(null)} className="py-3 px-4 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs cursor-pointer">
+                Rescan Image
+              </button>
+              <button type="button" onClick={handleSaveAll} disabled={saving}
+                className={`flex-1 py-3 rounded-2xl text-white font-bold text-xs cursor-pointer transition-all ${saving ? "bg-[#508991]" : "bg-[#004346] hover:bg-[#508991]"}`}>
+                {saving ? "Saving All Medicines..." : `Save All ${extractedList.length} Medicine(s) to Schedule`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Refill Prediction Engine ─────────────────────────
+function RefillPredictionWidget({ token, patientId, showToast, loadMedicines }) {
+  const [predictions, setPredictions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refillingId, setRefillingId] = useState(null);
+
+  const fetchPredictions = async () => {
+    setLoading(true);
+    try {
+      const q = patientId ? `?patient_id=${patientId}` : "";
+      const res = await axios.get(`${API}/medicines/refill-predictions${q}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPredictions(res.data.predictions || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPredictions(); }, [patientId]);
+
+  const handleRefillStock = async (medId, medName) => {
+    setRefillingId(medId);
+    try {
+      const q = patientId ? `?patient_id=${patientId}` : "";
+      await axios.patch(`${API}/medicines/${medId}${q}`, { stock: 30 }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showToast(`Stock refilled for ${medName} (+30 units)`);
+      fetchPredictions();
+      if (loadMedicines) loadMedicines();
+    } catch {
+      showToast("Failed to update stock", "error");
+    } finally {
+      setRefillingId(null);
+    }
+  };
+
+  if (loading) return null;
+  if (predictions.length === 0) return null;
+
+  return (
+    <div className="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-50 pb-3">
+        <div>
+          <h3 className="font-extrabold text-base text-[#004346] flex items-center gap-2">
+            AI Refill Prediction Engine
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">Automated stock depletion forecasts and recommended refill schedules</p>
+        </div>
+        <span className="self-start sm:self-auto px-3 py-1 rounded-xl bg-[#D6F3F4] text-[#004346] text-xs font-extrabold uppercase">
+          AI Active
+        </span>
+      </div>
+
+      {/* Horizontal Multi-Column Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {predictions.map(p => (
+          <div key={p.medicine_id} className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+            p.status === "out_of_stock" || p.status === "critical" ? "bg-rose-50/70 border-rose-200" :
+            p.status === "refill_recommended" ? "bg-amber-50/70 border-amber-200" : "bg-gray-50/70 border-gray-100"
+          }`}>
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-extrabold text-sm text-[#004346]">{p.medicine_name}</p>
+                    {p.formulation && <span className="px-1.5 py-0.5 rounded-md bg-[#D6F3F4] text-[#004346] text-[9px] font-extrabold uppercase">{p.formulation}</span>}
+                  </div>
+                  <p className="text-[11px] text-[#508991] font-semibold mt-0.5">{p.category}</p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase whitespace-nowrap ${
+                  p.status === "out_of_stock" || p.status === "critical" ? "bg-rose-600 text-white shadow-xs" :
+                  p.status === "refill_recommended" ? "bg-amber-600 text-white shadow-xs" : "bg-emerald-100 text-emerald-800"
+                }`}>
+                  {p.status_label}
+                </span>
+              </div>
+
+              <div className="space-y-1 text-xs font-medium text-gray-600 border-t border-gray-200/50 pt-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Current Stock:</span>
+                  <span className="font-extrabold text-[#004346] text-xs">{p.current_stock} units</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Est. Depletion:</span>
+                  <span className="font-extrabold text-gray-800 text-xs">{p.depletion_date.includes('(') || p.depletion_date.includes('Depleted') ? p.depletion_date : `${p.depletion_date} (${p.days_remaining}d left)`}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Recommended Refill:</span>
+                  <span className={`font-extrabold text-xs ${p.recommended_refill_date.includes('Immediate') ? 'text-rose-600 font-black' : 'text-[#508991]'}`}>{p.recommended_refill_date}</span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden my-2">
+                <div className={`h-full rounded-full transition-all ${
+                  p.days_remaining <= 2 ? "bg-rose-600" : p.days_remaining <= 5 ? "bg-amber-500" : "bg-[#004346]"
+                }`} style={{ width: `${Math.min(100, (p.current_stock / 30) * 100)}%` }}/>
+              </div>
+            </div>
+
+            <button onClick={() => handleRefillStock(p.medicine_id, p.medicine_name)} disabled={refillingId === p.medicine_id}
+              className="w-full mt-3 py-2 rounded-xl bg-white border border-gray-200 hover:border-[#004346] text-[#004346] font-extrabold text-xs transition-all shadow-xs cursor-pointer">
+              {refillingId === p.medicine_id ? "Updating..." : "Refill Stock (+30 units)"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Medication Adherence Analytics Component ─────────────
+function AdherenceAnalytics({ token, patientId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadAnalytics = async () => {
+    setLoading(true);
+    try {
+      const q = patientId ? `?patient_id=${patientId}` : "";
+      const res = await axios.get(`${API}/analytics/adherence-reports${q}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setData(res.data);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAnalytics(); }, [patientId]);
+
+  if (loading) return null;
+  if (!data) return null;
+
+  return (
+    <div className="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="font-extrabold text-base text-[#004346]">Medication Adherence Analytics</h3>
+          <p className="text-xs text-gray-400">7-day adherence trends and dosage consistency score</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 rounded-xl bg-[#D6F3F4] text-[#004346] text-xs font-extrabold uppercase">
+            Score: {data.overall_pct}% ({data.consistency_grade})
+          </span>
+        </div>
+      </div>
+
+      {/* 7-Day Trend Bar Chart */}
+      <div>
+        <p className="text-xs font-extrabold text-[#004346] uppercase tracking-wider mb-3">7-Day Adherence Trend</p>
+        <div className="grid grid-cols-7 gap-2 items-end h-32 pt-4 border-b border-gray-100 pb-2">
+          {data.weekly_trend.map(item => (
+            <div key={item.date} className="flex flex-col items-center gap-1.5 h-full justify-end">
+              <span className="text-[10px] font-extrabold text-[#004346]">{item.adherence_pct}%</span>
+              <div className="w-full bg-gray-100 rounded-t-lg overflow-hidden flex flex-col justify-end" style={{ height: "70px" }}>
+                <div className="bg-gradient-to-t from-[#004346] to-[#508991] w-full rounded-t-lg transition-all"
+                  style={{ height: `${item.adherence_pct}%` }}/>
+              </div>
+              <span className="text-[10px] font-bold text-gray-500 uppercase">{item.day}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-center border-t border-gray-50 pt-3">
+        <div className="p-3 bg-gray-50/70 rounded-2xl">
+          <p className="text-xl font-extrabold text-[#004346]">{data.total_taken}</p>
+          <p className="text-[10px] text-gray-400 font-bold uppercase">Total Taken</p>
+        </div>
+        <div className="p-3 bg-gray-50/70 rounded-2xl">
+          <p className="text-xl font-extrabold text-emerald-700">{data.overall_pct}%</p>
+          <p className="text-[10px] text-gray-400 font-bold uppercase">Adherence Score</p>
+        </div>
+        <div className="p-3 bg-gray-50/70 rounded-2xl">
+          <p className="text-xl font-extrabold text-[#508991]">{data.consistency_grade}</p>
+          <p className="text-[10px] text-gray-400 font-bold uppercase">Consistency</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 //  MAIN DASHBOARD
-// ════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 export default function Dashboard() {
   const { user, logout, login } = useAuth();
   const navigate = useNavigate();
@@ -713,9 +1589,9 @@ export default function Dashboard() {
 
   const role = user?.role || "patient";
 
-  const [tab,        setTab]        = useState("overview");
-  const [tabHistory, setTabHistory] = useState(["overview"]);
-  const goTo = t => { setTab(t); setTabHistory(h => [...h, t]); };
+  const [tab,        setTab]        = useState(() => localStorage.getItem("pillsync_active_tab") || "overview");
+  const [tabHistory, setTabHistory] = useState([localStorage.getItem("pillsync_active_tab") || "overview"]);
+  const goTo = t => { setTab(t); setTabHistory(h => [...h, t]); localStorage.setItem("pillsync_active_tab", t); };
   const goBack = () => {
     if (tabHistory.length <= 1) return;
     const h = tabHistory.slice(0, -1);
@@ -724,11 +1600,42 @@ export default function Dashboard() {
   const canGoBack = tabHistory.length > 1;
 
   const [showAdd,          setShowAdd]          = useState(false);
+  const [showOcrModal,     setShowOcrModal]     = useState(false);
   const [showAddPatient,   setShowAddPatient]   = useState(false);
   const [editingMedicine,  setEditingMedicine]  = useState(null);
   const [editingPatient,   setEditingPatient]   = useState(null);
-  const [deleteConfirm,    setDeleteConfirm]    = useState(null);
-  const [progressSubTab,   setProgressSubTab]   = useState("chart");
+  const [deleteConfirm,           setDeleteConfirm]           = useState(null);
+  const [showDeleteAccountModal,  setShowDeleteAccountModal]  = useState(false);
+  const [deleteAccountLoading,    setDeleteAccountLoading]    = useState(false);
+  const [progressSubTab,          setProgressSubTab]          = useState("chart");
+  const [globalMedSearch,         setGlobalMedSearch]         = useState("");
+  const [searchDropdownOpen,      setSearchDropdownOpen]      = useState(false);
+
+  // AI Assistant states
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+
+  // Emergency Contacts state persisted in localStorage
+  const [emergencyContacts, setEmergencyContacts] = useState(() => {
+    try {
+      const saved = localStorage.getItem("pillsync_emergency_contacts");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("pillsync_emergency_contacts", JSON.stringify(emergencyContacts));
+  }, [emergencyContacts]);
+
+  // Floating AI Chatbot auto-scroll ref and effect
+  const floatingChatEndRef = useRef(null);
+  useEffect(() => {
+    if (aiChatOpen && floatingChatEndRef.current) {
+      floatingChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [aiMessages, aiChatOpen]);
 
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [dateInput,    setDateInput]    = useState(todayStr());
@@ -738,6 +1645,7 @@ export default function Dashboard() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
 
   const [medicines,   setMedicines]   = useState([]);
+  const [medSearch,   setMedSearch]   = useState("");
   const [schedule,    setSchedule]    = useState([]);
   const [adherence,   setAdherence]   = useState({ total_scheduled:0, taken:0, missed:0, adherence_pct:0, active_count:0, low_stock_meds:[] });
   const [history,     setHistory]     = useState([]);
@@ -749,10 +1657,25 @@ export default function Dashboard() {
     age:    user?.age||"",
     weight: user?.weight ? String(user.weight).replace(" kg","") : "",
     height: user?.height ? String(user.height).replace(" cm","") : "",
+    blood_group: user?.blood_group||"",
   });
   const [pwForm,      setPwForm]      = useState({ old_password:"", new_password:"", confirm_password:"" });
   const [profLoading, setProfLoading] = useState(false);
   const [pwLoading,   setPwLoading]   = useState(false);
+
+  const handleDeleteOwnAccount = async () => {
+    setDeleteAccountLoading(true);
+    try {
+      await axios.delete(`${API}/users/account`, { headers: { Authorization: `Bearer ${token}` } });
+      showToast("Your account has been deleted.", "info");
+      logout("/login");
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Failed to delete account", "error");
+    } finally {
+      setDeleteAccountLoading(false);
+      setShowDeleteAccountModal(false);
+    }
+  };
 
   const [toast, setToast] = useState(null);
   const showToast = (message, type="success") => { setToast({message,type}); setTimeout(()=>setToast(null),4000); };
@@ -789,6 +1712,7 @@ export default function Dashboard() {
       age:    user.age||"",
       weight: user.weight ? String(user.weight).replace(" kg","") : "",
       height: user.height ? String(user.height).replace(" cm","") : "",
+      blood_group: user.blood_group||"",
     });
   }, [user]);
 
@@ -878,6 +1802,125 @@ export default function Dashboard() {
     setDeleteConfirm(null);
   };
 
+  const exportToCSV = () => {
+    if (history.length === 0) {
+      showToast("No data to export", "error");
+      return;
+    }
+    const headers = ["Medicine", "Date", "Scheduled Time", "Status", "Logged At"];
+    const rows = history.map(log => [
+      log.medicine_name || "—",
+      log.log_date || log.taken_at?.slice(0, 10) || "—",
+      log.scheduled_time || "—",
+      log.status || "—",
+      log.taken_at || "—"
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `pillsync_adherence_report_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Report exported as CSV!");
+  };
+
+  const exportToPDF = () => {
+    if (history.length === 0) {
+      showToast("No data to export", "error");
+      return;
+    }
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      showToast("Pop-up blocked! Please allow pop-ups to export reports.", "error");
+      return;
+    }
+    
+    const patientName = vitalsPatient?.name || user?.name || "Patient";
+    const patientEmail = vitalsPatient?.email || user?.email || "—";
+    
+    const total = history.length;
+    const taken = history.filter(h => h.status === "taken").length;
+    const missed = history.filter(h => h.status === "missed").length;
+    const pct = total > 0 ? Math.round((taken / total) * 100) : 0;
+
+    const rowsHtml = history.map(log => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.medicine_name || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.log_date || log.taken_at?.slice(0, 10) || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.scheduled_time || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: ${log.status === "taken" ? "#065f46" : "#991b1b"};">${log.status || "—"}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${log.taken_at || "—"}</td>
+      </tr>
+    `).join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>PillSync Medication Adherence Report</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #172a3a; margin: 40px; line-height: 1.5; }
+            h1 { color: #004346; margin-bottom: 5px; }
+            h2 { color: #508991; font-size: 16px; margin-top: 0; margin-bottom: 25px; }
+            .info-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+            .info-card { background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { text-align: left; padding: 12px 10px; background: #004346; color: white; font-size: 11px; text-transform: uppercase; }
+            .badge { display: inline-block; padding: 12px 20px; background: #d6f3f4; color: #004346; border-radius: 12px; font-weight: bold; font-size: 16px; margin-bottom: 25px; border: 1px solid #508991/20; }
+          </style>
+        </head>
+        <body>
+          <h1>PillSync Adherence Report</h1>
+          <h2>Generated on ${new Date().toLocaleDateString()}</h2>
+          
+          <div class="info-grid">
+            <div class="info-card">
+              <strong>Patient Details</strong><br/>
+              Name: ${patientName}<br/>
+              Email: ${patientEmail}<br/>
+              Blood Group: ${vitalsPatient?.blood_group || "—"}
+            </div>
+            <div class="info-card">
+              <strong>Report Summary</strong><br/>
+              Total Logged Doses: ${total}<br/>
+              Taken Doses: ${taken}<br/>
+              Missed Doses: ${missed}
+            </div>
+          </div>
+          
+          <div class="badge">
+            Overall Adherence Rate: ${pct}%
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Medicine</th>
+                <th>Scheduled Date</th>
+                <th>Scheduled Time</th>
+                <th>Status</th>
+                <th>Logged At</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const toggleStatus = async (med_id, scheduled_time, currentStatus, medName) => {
     if (selectedDate === todayStr() && currentStatus === "pending") {
       const now = new Date();
@@ -940,6 +1983,7 @@ export default function Dashboard() {
         payload.age    = profileForm.age ? parseInt(profileForm.age) : null;
         payload.weight = profileForm.weight ? `${profileForm.weight} kg` : null;
         payload.height = profileForm.height ? `${profileForm.height} cm` : null;
+        payload.blood_group = profileForm.blood_group || null;
       }
       const res = await axios.patch(`${API}/users/profile`, payload, { headers: { Authorization: `Bearer ${token}` } });
       login(token, res.data);
@@ -1053,15 +2097,77 @@ export default function Dashboard() {
       )}
 
       {showAdd && <AddMedicineModal token={token} patientId={effectivePatientId} onClose={()=>setShowAdd(false)} onSave={(med)=>{loadSchedule();showToast("Medicine added!");addNotif(`"${med?.name||"Medicine"}" added to your schedule.`,"success","Medicine Added");}}/>}
+      {showOcrModal && (
+        <OcrUploadModal
+          token={token}
+          patientId={effectivePatientId}
+          onClose={() => setShowOcrModal(false)}
+          onSave={(med) => { loadSchedule(); showToast("Medicine added via OCR scan!"); addNotif(`"${med?.name||"Medicine"}" added via prescription scan.`, "success", "OCR Scan"); }}
+          showToast={showToast}
+          addNotif={addNotif}
+        />
+      )}
       {editingMedicine && <EditMedicineModal medicine={editingMedicine} token={token} patientId={effectivePatientId} onClose={()=>setEditingMedicine(null)} onSave={()=>{loadSchedule();showToast("Medicine updated!");addNotif("Medicine details updated.","info");}}/>}
       {editingPatient && <EditPatientModal patient={editingPatient} token={token} onClose={()=>setEditingPatient(null)} onSave={()=>{loadPatients();loadSchedule();showToast("Patient updated!");addNotif(`Patient "${editingPatient.name}" vitals updated.`,"success");}}/>}
       {showAddPatient && <AddPatientModal token={token} onClose={()=>setShowAddPatient(false)} onSave={(newPatient)=>{loadPatients(newPatient?.id);showToast("Patient account created!");addNotif("New patient account created successfully.","success","Patient Added");}}/>}
+      {showDeleteAccountModal && <DeleteAccountModal onClose={() => setShowDeleteAccountModal(false)} onConfirm={handleDeleteOwnAccount} loading={deleteAccountLoading} />}
 
       {/* ── NAVBAR ── */}
       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 sm:px-6 lg:px-10 py-3 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div className="w-8 h-8 rounded-lg bg-[#004346] text-white flex items-center justify-center shadow-md"><PillIcon c="w-4 h-4"/></div>
-          <span className="font-extrabold text-lg sm:text-xl text-[#004346] tracking-tight">PillSync</span>
+          <span className="font-extrabold text-lg sm:text-xl text-[#004346] tracking-tight hidden md:inline">PillSync</span>
+          
+          {/* Global Medicine Search Bar (Wider, Bolder & Clean UI) */}
+          <div className="relative">
+            <div className="flex items-center bg-gray-50 hover:bg-white border-2 border-[#004346]/20 rounded-2xl px-3.5 py-1.5 transition-all focus-within:border-[#004346] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#004346]/10 shadow-sm">
+              <svg className="w-4 h-4 text-[#004346] shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input
+                value={globalMedSearch}
+                onChange={e => { setGlobalMedSearch(e.target.value); setSearchDropdownOpen(true); }}
+                onFocus={() => setSearchDropdownOpen(true)}
+                placeholder="Search medicine across tabs..."
+                className="bg-transparent text-xs font-extrabold text-[#004346] placeholder:text-gray-400 placeholder:font-bold outline-none w-48 sm:w-72 md:w-80"
+              />
+              {globalMedSearch && (
+                <button onClick={() => { setGlobalMedSearch(""); setSearchDropdownOpen(false); }} className="text-gray-400 hover:text-gray-700 cursor-pointer ml-1">
+                  <X c="w-3.5 h-3.5"/>
+                </button>
+              )}
+            </div>
+
+            {/* Live Search Dropdown */}
+            {searchDropdownOpen && globalMedSearch.trim() && (
+              <div className="absolute left-0 top-11 w-64 sm:w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 animate-[slideDown_.2s_ease] overflow-hidden">
+                <div className="p-2 border-b border-gray-50 flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider px-2">Matching Medicines</span>
+                  <button onClick={() => setSearchDropdownOpen(false)} className="text-[10px] font-bold text-[#508991] hover:underline cursor-pointer px-2">Close</button>
+                </div>
+                <div className="max-h-56 overflow-y-auto divide-y divide-gray-50">
+                  {medicines.filter(m => !m.is_deleted && (m.name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-400 font-semibold">No medicines match "{globalMedSearch}"</div>
+                  ) : (
+                    medicines.filter(m => !m.is_deleted && (m.name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).map(med => (
+                      <button key={med.id}
+                        onClick={() => {
+                          setGlobalMedSearch(med.name);
+                          setSearchDropdownOpen(false);
+                        }}
+                        className="w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-[#D6F3F4]/50 transition-colors cursor-pointer">
+                        <div className="w-7 h-7 rounded-lg bg-[#D6F3F4] text-[#004346] flex items-center justify-center shrink-0">
+                          <FormIcon formulation={med.formulation} c="w-3.5 h-3.5"/>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-[#004346] truncate">{med.name}</p>
+                          <p className="text-[9px] text-gray-400 capitalize">{med.category} {med.dosage ? `• ${med.dosage}` : ''}</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Role Switcher */}
@@ -1122,15 +2228,32 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 border-l border-gray-100 pl-3">
-            <div className="w-9 h-9 rounded-xl bg-[#004346] text-white font-bold flex items-center justify-center uppercase shadow">{user?.name?.slice(0,2)||"PS"}</div>
-            <div className="hidden md:block">
-              <p className="text-xs font-bold text-[#172A3A] leading-none">{user?.name}</p>
-              <p className="text-[10px] text-gray-400">{user?.email}</p>
+          {/* Header User Account Badge (Visible for Patient, Caregiver, Admin) */}
+          <div className="flex items-center gap-2 sm:gap-2.5 border-l border-gray-200 pl-2 sm:pl-3">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#004346] text-white font-extrabold flex items-center justify-center uppercase shadow-sm text-xs sm:text-sm shrink-0">
+              {user?.name?.slice(0,2)||"PS"}
             </div>
+            <div className="block">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-extrabold text-[#004346] leading-tight truncate max-w-[110px] sm:max-w-[160px]">{user?.name}</p>
+                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase shrink-0 ${
+                  role === "admin" ? "bg-purple-100 text-purple-700 border border-purple-200" :
+                  role === "caregiver" ? "bg-rose-100 text-rose-700 border border-rose-200" :
+                  "bg-[#D6F3F4] text-[#004346] border border-[#508991]/20"
+                }`}>
+                  {role}
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-400 font-semibold truncate max-w-[130px] sm:max-w-[180px]">{user?.email}</p>
+            </div>
+            <button onClick={() => goTo("settings")}
+              className="w-7 h-7 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#004346] flex items-center justify-center transition-all cursor-pointer border border-teal-100/60 ml-0.5 shrink-0" title="Edit Account Settings">
+              <Edit c="w-3.5 h-3.5"/>
+            </button>
           </div>
+
           <button onClick={()=>{logout("/login");}}
-            className="cursor-pointer border border-[#004346]/20 hover:border-[#004346] text-[#004346] px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:bg-[#004346]/5">
+            className="cursor-pointer border border-[#004346]/20 hover:border-[#004346] text-[#004346] px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:bg-[#004346]/5 shrink-0">
             Sign Out
           </button>
         </div>
@@ -1139,7 +2262,43 @@ export default function Dashboard() {
       {/* Close notification drawer on outside click */}
       {notifOpen && <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)}/>}
 
-      <div className="max-w-[1200px] mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-8">
+      <div className="flex min-h-[calc(100vh-64px)]">
+        {/* ── LEFT SIDEBAR ── */}
+        <aside className="hidden md:flex flex-col w-[180px] shrink-0 bg-white border-r border-gray-100 px-3 py-6 gap-1">
+          <p className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest px-3 mb-2">Navigation</p>
+          {[
+            {key:"overview",label:"Overview",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>},
+            {key:"medicines",label:role==="patient"?"My Medicines":"Medicines",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>},
+            ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patients",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>}]:[]),
+            ...(role==="admin"?[{key:"caregivers",label:"Caregivers",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>}]:[]),
+            {key:"progress",label:"Progress",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>},
+            {key:"refill",label:"Refill Predictor",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>},
+            {key:"history",label:"History",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>},
+            {key:"ai",label:"AI Assistant",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>},
+            {key:"emergency",label:"Emergency Contacts",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>},
+            {key:"settings",label:"Settings",icon:<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>},
+          ].map(({key,label,icon})=>(
+            <button key={key} onClick={()=>goTo(key)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer w-full text-left ${tab===key?"bg-[#004346] text-white shadow-md":"text-gray-500 hover:bg-[#D6F3F4]/60 hover:text-[#004346]"}`}>
+              {icon}{label}
+            </button>
+          ))}
+          <div className="mt-auto pt-4 border-t border-gray-100 space-y-1.5">
+            {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
+              <>
+                <button onClick={()=>setShowAdd(true)} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl bg-[#004346] hover:bg-[#508991] text-white text-xs font-bold transition-all cursor-pointer"><Plus c="w-4 h-4"/>Add Medicine</button>
+                <button onClick={()=>setShowOcrModal(true)} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl bg-white hover:bg-teal-50 text-[#004346] border border-teal-200 text-xs font-bold transition-all cursor-pointer"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>Scan Medicine</button>
+              </>
+            )}
+            <button onClick={()=>{logout("/login");}}
+              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-rose-500 hover:bg-rose-50 text-xs font-bold transition-all cursor-pointer">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>Sign Out
+            </button>
+          </div>
+        </aside>
+
+        {/* ── MAIN CONTENT ── */}
+        <div className="flex-1 max-w-[1200px] mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-8">
 
         {/* ── PATIENT VITALS BANNER ── */}
         {vitalsPatient && (
@@ -1154,8 +2313,8 @@ export default function Dashboard() {
                   <p className="text-xs text-white/75">{vitalsPatient.email}{vitalsPatient.phone ? ` • ${vitalsPatient.phone}` : ""}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-2 sm:gap-3 bg-black/15 p-3 sm:p-4 rounded-2xl border border-white/5 flex-1 sm:max-w-xs lg:max-w-sm">
-                {[["Gender",vitalsPatient.gender||"—","capitalize"],["Age",vitalsPatient.age?`${vitalsPatient.age} yrs`:"—"],["Weight",vitalsPatient.weight||"—"],["Height",vitalsPatient.height||"—"]].map(([l,v,ex])=>(
+              <div className="grid grid-cols-5 gap-2 sm:gap-3 bg-black/15 p-3 sm:p-4 rounded-2xl border border-white/5 flex-1 sm:max-w-xs lg:max-w-sm">
+                {[["Gender",vitalsPatient.gender||"—","capitalize"],["Age",vitalsPatient.age?`${vitalsPatient.age} yrs`:"—"],["Weight",vitalsPatient.weight||"—"],["Height",vitalsPatient.height||"—"],["Blood Group",vitalsPatient.blood_group||"—"]].map(([l,v,ex])=>(
                   <div key={l}><p className="text-[9px] font-extrabold text-[#74B3CE] uppercase">{l}</p><p className={`text-xs sm:text-sm font-bold ${ex||""}`}>{v}</p></div>
                 ))}
               </div>
@@ -1167,7 +2326,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── HEADER + TABS ── */}
+        {/* ── HEADER ── */}
         <div className="flex flex-col gap-3 mb-5 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div>
@@ -1184,18 +2343,22 @@ export default function Dashboard() {
               </select>
             )}
           </div>
-          {/* Tab bar */}
-          <div className="flex overflow-x-auto gap-1 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm" style={{scrollbarWidth:"none"}}>
+          {/* Mobile tab bar (visible only on small screens) */}
+          <div className="flex md:hidden overflow-x-auto gap-1 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm" style={{scrollbarWidth:"none"}}>
             {[
               {key:"overview",label:"Overview"},
-              ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patient List"}]:[]),
-              {key:"medicines",label:role==="patient"?"My Medicines":"Patient Medicines"},
+              ...(["caregiver","admin"].includes(role)?[{key:"patients",label:"Patients"}]:[]),
+              ...(role==="admin"?[{key:"caregivers",label:"Caregivers"}]:[]),
+              {key:"medicines",label:"Medicines"},
               {key:"progress",label:"Progress"},
+              {key:"refill",label:"Refill"},
               {key:"history",label:"History"},
+              {key:"ai",label:"AI"},
+              {key:"emergency",label:"Emergency"},
               {key:"settings",label:"Settings"},
             ].map(({key,label})=>(
               <button key={key} onClick={()=>goTo(key)}
-                className={`cursor-pointer px-3 sm:px-5 py-2 rounded-xl text-[11px] sm:text-xs font-extrabold whitespace-nowrap transition-all ${tab===key?"bg-[#004346] text-white shadow":"text-gray-400 hover:text-[#004346]"}`}>
+                className={`cursor-pointer px-3 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap transition-all ${tab===key?"bg-[#004346] text-white shadow":"text-gray-400 hover:text-[#004346]"}`}>
                 {label}
               </button>
             ))}
@@ -1205,8 +2368,8 @@ export default function Dashboard() {
         {/* ── BACK BUTTON ── */}
         {canGoBack && <BackButton onBack={goBack}/>}
 
-        {/* ── STATS CARDS ── */}
-        {(role==="patient"||["caregiver","admin"].includes(role)&&effectivePatientId) && (
+        {/* ── STATS CARDS (Only on Overview and Progress tabs) ── */}
+        {(tab === "overview" || tab === "progress") && (role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-8">
             {[
               {label:"Active Medicines",val:adherence.active_count,col:"text-[#004346]"},
@@ -1222,11 +2385,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ════ OVERVIEW TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ OVERVIEW TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "overview" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 items-start">
-            {/* Left column */}
-            <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          <div className="space-y-6">
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 items-start">
+              {/* Left column */}
+              <div className="lg:col-span-2 space-y-4 sm:space-y-6">
               {adherence.low_stock_meds?.length > 0 && (
                 <div className="space-y-2">
                   {adherence.low_stock_meds.map(med=>(
@@ -1262,11 +2427,11 @@ export default function Dashboard() {
                     <h3 className="text-xs font-extrabold text-[#004346] uppercase tracking-wider">Today's Medicines</h3>
                     {medLoading && <span className="text-[10px] text-gray-400 animate-pulse">Loading...</span>}
                   </div>
-                  {schedule.length === 0 ? (
+                  {schedule.filter(dose => !globalMedSearch || (dose.name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
                       <TabletIcon c="w-10 h-10 text-gray-200 mb-3"/><p className="text-sm font-bold text-gray-400">No medicines scheduled for this date.</p>
                     </div>
-                  ) : schedule.map(dose=>(
+                  ) : schedule.filter(dose => !globalMedSearch || (dose.name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).map(dose=>(
                     <div key={`${dose.medicine_id}-${dose.scheduled_time}`}
                       className={`flex items-center gap-3 p-3 sm:p-4 rounded-2xl border transition-all ${statusColor(dose.status)}`}>
                       <div className="w-10 h-10 rounded-xl bg-white/70 border border-white flex items-center justify-center shrink-0">
@@ -1309,123 +2474,164 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
-            </div>
+              </div>
+              {/* Right column */}
+              <div className="space-y-4 sm:space-y-6">
+                {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={()=>setShowAdd(true)}
+                      className="py-3.5 bg-[#004346] hover:bg-[#508991] text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all">
+                      <Plus c="w-4 h-4"/> Add Medicine
+                    </button>
+                    <button onClick={()=>setShowOcrModal(true)}
+                      className="py-3.5 bg-white hover:bg-teal-50 text-[#004346] border border-teal-200 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all">
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      Scan Prescription
+                    </button>
+                  </div>
+                )}
+                {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
+                  <div className="bg-[#004346] text-white p-6 sm:p-8 rounded-[28px] sm:rounded-[36px] shadow-lg relative overflow-hidden">
+                    <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5"/>
+                    <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-white/5"/>
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <p className="text-[10px] font-extrabold text-[#74B3CE] uppercase tracking-wider mb-1">Today's Adherence</p>
+                          <p className="text-4xl sm:text-5xl font-extrabold">{Math.round(adherence.adherence_pct||0)}%</p>
+                        </div>
+                        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center"><TrendingUp c="w-7 h-7 text-[#74B3CE]"/></div>
+                      </div>
+                      <div className="w-full bg-white/15 rounded-full h-2 mb-4">
+                        <div className="bg-[#74B3CE] h-2 rounded-full transition-all duration-700" style={{width:`${Math.round(adherence.adherence_pct||0)}%`}}/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white/10 rounded-2xl p-3">
+                          <p className="text-xl font-extrabold text-emerald-400">{adherence.taken}</p>
+                          <p className="text-[10px] text-white/60 font-semibold">Taken</p>
+                        </div>
+                        <div className="bg-white/10 rounded-2xl p-3">
+                          <p className="text-xl font-extrabold text-rose-400">{adherence.missed}</p>
+                          <p className="text-[10px] text-white/60 font-semibold">Missed</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-            {/* Right column */}
-            <div className="space-y-4 sm:space-y-6">
-              {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
-                <button onClick={()=>setShowAdd(true)}
-                  className="w-full py-4 bg-[#004346] hover:bg-[#508991] text-white rounded-3xl font-extrabold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all">
-                  <Plus c="w-4 h-4"/> Add Medicine
-                </button>
-              )}
-              {(role==="patient"||(["caregiver","admin"].includes(role)&&effectivePatientId)) && (
-                <div className="bg-[#004346] text-white p-6 sm:p-8 rounded-[28px] sm:rounded-[36px] shadow-lg relative overflow-hidden">
-                  <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5"/>
-                  <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-white/5"/>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <p className="text-[10px] font-extrabold text-[#74B3CE] uppercase tracking-wider mb-1">Today's Adherence</p>
-                        <p className="text-4xl sm:text-5xl font-extrabold">{Math.round(adherence.adherence_pct||0)}%</p>
-                      </div>
-                      <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center"><TrendingUp c="w-7 h-7 text-[#74B3CE]"/></div>
-                    </div>
-                    <div className="w-full bg-white/15 rounded-full h-2 mb-4">
-                      <div className="bg-[#74B3CE] h-2 rounded-full transition-all duration-700" style={{width:`${Math.round(adherence.adherence_pct||0)}%`}}/>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-white/10 rounded-2xl p-3">
-                        <p className="text-xl font-extrabold text-emerald-400">{adherence.taken}</p>
-                        <p className="text-[10px] text-white/60 font-semibold">Taken</p>
-                      </div>
-                      <div className="bg-white/10 rounded-2xl p-3">
-                        <p className="text-xl font-extrabold text-rose-400">{adherence.missed}</p>
-                        <p className="text-[10px] text-white/60 font-semibold">Missed</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {/* Logged in account card */}
-              <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-xs font-extrabold text-[#004346] uppercase tracking-wider border-b border-gray-50 pb-2 mb-4">Logged In Account</h3>
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-extrabold text-lg uppercase">{user?.name?.slice(0,1)}</div>
-                  <div>
-                    <h4 className="font-extrabold text-[#004346] text-sm">{user?.name}</h4>
-                    <p className="text-xs text-gray-400">{user?.email}</p>
-                    <p className="text-[9px] text-[#74B3CE] font-bold uppercase mt-1 flex items-center gap-1">
-                      {role==="admin"?<Shield c="w-2.5 h-2.5"/>:role==="caregiver"?<Heart c="w-2.5 h-2.5"/>:<User c="w-2.5 h-2.5"/>}
-                      {role}
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
+
           </div>
         )}
 
-        {/* ════ PATIENTS TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ PATIENTS TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "patients" && ["caregiver","admin"].includes(role) && (
-          <div className="space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Patient List</h2>
-              <button onClick={()=>setShowAddPatient(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#004346] hover:bg-[#508991] text-white rounded-2xl text-xs font-extrabold transition-all shadow cursor-pointer">
-                <Plus c="w-3.5 h-3.5"/> Add Patient
-              </button>
-            </div>
-            {patientList.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-14 sm:p-16 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
-                <User c="w-12 h-12 text-gray-200 mb-4"/><p className="text-sm font-bold text-gray-400">No patients registered yet.</p>
-                <button onClick={()=>setShowAddPatient(true)} className="mt-4 px-5 py-2.5 bg-[#004346] text-white rounded-2xl text-xs font-extrabold cursor-pointer hover:bg-[#508991] transition-all">Add First Patient</button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                {patientList.map(pt=>(
-                  <div key={pt.id} className="bg-white p-4 sm:p-6 rounded-[24px] border border-gray-100 shadow-sm space-y-3 sm:space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-extrabold uppercase">{pt.name.slice(0,1)}</div>
-                        <div><h3 className="font-extrabold text-[#004346] text-sm">{pt.name}</h3><p className="text-xs text-gray-400">{pt.email}</p></div>
-                      </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <button onClick={()=>{setSelectedPatientId(pt.id);goTo("overview");showToast(`Switched to ${pt.name}`);}}
-                          className="px-3 py-1.5 bg-[#004346] hover:bg-[#508991] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer">Select</button>
-                        <button onClick={()=>setEditingPatient(pt)}
-                          className="w-8 h-8 rounded-xl bg-teal-50 text-[#004346] hover:bg-teal-600 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-teal-100"><Edit c="w-3.5 h-3.5"/></button>
-                        <button onClick={()=>setDeleteConfirm({type:"patient",id:pt.id,name:pt.name})}
-                          className="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-red-100"><Trash c="w-3.5 h-3.5"/></button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold text-gray-500 border-t border-gray-50 pt-3">
-                      <div>Gender: <span className="text-[#004346] capitalize">{pt.gender||"—"}</span></div>
-                      <div>Age: <span className="text-[#004346]">{pt.age?`${pt.age} yrs`:"—"}</span></div>
-                      <div>Height: <span className="text-[#004346]">{pt.height||"—"}</span></div>
-                      <div>Weight: <span className="text-[#004346]">{pt.weight||"—"}</span></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <PatientsTab
+            role={role}
+            token={token}
+            patientList={patientList}
+            loadPatients={loadPatients}
+            selectedPatientId={selectedPatientId}
+            setSelectedPatientId={setSelectedPatientId}
+            goTo={goTo}
+            showToast={showToast}
+            addNotif={addNotif}
+            setShowAddPatient={setShowAddPatient}
+            setEditingPatient={setEditingPatient}
+            setDeleteConfirm={setDeleteConfirm}
+          />
         )}
 
-        {/* ════ MEDICINES TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ CAREGIVERS TAB ΓòÉΓòÉΓòÉΓòÉ */}
+        {tab === "caregivers" && role === "admin" && (
+          <CaregiverListTab
+            token={token}
+            showToast={showToast}
+            addNotif={addNotif}
+            setEditingPatient={setEditingPatient}
+          />
+        )}
+
+        {/* ΓòÉΓòÉΓòÉΓòÉ MEDICINES TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "medicines" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            {/* Urgent Low Stock Status Bar */}
+            {medicines.filter(m => !m.is_deleted && m.stock < 10).length > 0 && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border-2 border-rose-200/80 shadow-sm space-y-3 animate-[fadeIn_.2s_ease]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/20">
+                      <AlertIcon c="w-4.5 h-4.5"/>
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-rose-900 text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2">
+                        <span>Low Stock Alert — Immediate Action Needed</span>
+                        <span className="px-2 py-0.5 rounded-full bg-rose-200 text-rose-800 text-[10px] font-extrabold">
+                          {medicines.filter(m => !m.is_deleted && m.stock < 10).length} Item{medicines.filter(m => !m.is_deleted && m.stock < 10).length > 1 ? "s" : ""}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-rose-700/80 font-medium mt-0.5">
+                        The following medicines are running low or out of stock. Please restore stock soon:
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white font-extrabold text-xs shadow-sm whitespace-nowrap">
+                    Refill Needed
+                  </span>
+                </div>
+
+                {/* Cleanly spaced badges */}
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-rose-200/60">
+                  {medicines.filter(m => !m.is_deleted && m.stock < 10).map(med => (
+                    <div key={med.id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-rose-200 shadow-xs text-xs">
+                      <span className="font-extrabold text-gray-800">{med.name}</span>
+                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase ${med.stock === 0 ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800 border border-amber-200"}`}>
+                        {med.stock === 0 ? "Out of Stock" : `${med.stock} left`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
               <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">{role==="patient"?"My Medicines":"Patient Medicines"}</h2>
-              {medLoading && <span className="text-xs text-gray-400 animate-pulse">Refreshing...</span>}
+              <div className="flex items-center gap-2 flex-1 sm:max-w-md justify-end">
+                <button onClick={()=>setShowOcrModal(true)}
+                  className="px-4 py-2 bg-white hover:bg-teal-50 text-[#004346] border border-teal-200 rounded-xl font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all shrink-0">
+                  <svg className="w-4 h-4 text-[#508991]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                  Scan Prescription (OCR)
+                </button>
+                <div className="relative flex-1">
+                  <input
+                    value={medSearch}
+                    onChange={e=>setMedSearch(e.target.value)}
+                    placeholder="Search medicines..."
+                    className="w-full pl-8 pr-8 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 outline-none focus:border-[#508991] bg-white transition-all"
+                  />
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  {medSearch && <button onClick={()=>setMedSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"><X c="w-3 h-3"/></button>}
+                </div>
+              </div>
             </div>
-            {medicines.length === 0 ? (
+            {medicines.filter(m => {
+              const query = (medSearch || globalMedSearch).trim().toLowerCase();
+              if (!query) return true;
+              return (m.name||'').toLowerCase().includes(query) || (m.category||'').toLowerCase().includes(query) || (m.description||'').toLowerCase().includes(query);
+            }).length === 0 ? (
               <div className="flex flex-col items-center justify-center p-14 sm:p-16 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
-                <PillIcon c="w-12 h-12 text-gray-200 mb-4"/><p className="text-sm font-bold text-gray-400">No medicines added yet.</p>
+                <PillIcon c="w-12 h-12 text-gray-200 mb-4"/>
+                <p className="text-sm font-bold text-gray-400">{medSearch ? `No medicines match "${medSearch}"` : "No medicines added yet."}</p>
+                {medSearch && <button onClick={()=>setMedSearch("")} className="mt-3 text-xs text-[#508991] font-bold hover:underline cursor-pointer">Clear search</button>}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                {medicines.map(med=>(
+                {medicines.filter(m => {
+                  const query = (medSearch || globalMedSearch).trim().toLowerCase();
+                  if (!query) return true;
+                  return (m.name||'').toLowerCase().includes(query) || (m.category||'').toLowerCase().includes(query) || (m.description||'').toLowerCase().includes(query);
+                }).map(med=>(
                   <div key={med.id} className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm p-4 sm:p-5 flex flex-col gap-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
@@ -1471,23 +2677,41 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ════ PROGRESS TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ PROGRESS TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "progress" && (
           <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Adherence Analytics Report */}
+            <AdherenceAnalytics
+              token={token}
+              patientId={effectivePatientId}
+            />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-[24px] border border-gray-100 shadow-xs">
               <div>
                 <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Medication Progress</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Track adherence and view your 7-day report.</p>
               </div>
-              <div className="flex gap-1.5 bg-gray-100 p-1 rounded-xl w-fit">
-                <button onClick={() => setProgressSubTab("chart")}
-                  className={`cursor-pointer flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${progressSubTab === "chart" ? "bg-white text-[#004346] shadow-sm" : "text-gray-400 hover:text-[#004346]"}`}>
-                  <BarChart c="w-3.5 h-3.5"/> Chart
-                </button>
-                <button onClick={() => setProgressSubTab("list")}
-                  className={`cursor-pointer flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${progressSubTab === "list" ? "bg-white text-[#004346] shadow-sm" : "text-gray-400 hover:text-[#004346]"}`}>
-                  <ListIcon c="w-3.5 h-3.5"/> List
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1 bg-gray-100 p-1.5 rounded-xl border border-gray-200 shadow-inner">
+                  <button onClick={() => setProgressSubTab("chart")}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${progressSubTab === "chart" ? "bg-[#004346] text-white shadow-sm" : "text-gray-500 hover:text-[#004346]"}`}>
+                    <BarChart c="w-3.5 h-3.5"/> Chart
+                  </button>
+                  <button onClick={() => setProgressSubTab("list")}
+                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${progressSubTab === "list" ? "bg-[#004346] text-white shadow-sm" : "text-gray-500 hover:text-[#004346]"}`}>
+                    <ListIcon c="w-3.5 h-3.5"/> List
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button onClick={exportToCSV}
+                    className="cursor-pointer flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-teal-200 text-[#004346] bg-teal-50/50 hover:bg-teal-50 text-xs font-extrabold transition-all">
+                    CSV Export
+                  </button>
+                  <button onClick={exportToPDF}
+                    className="cursor-pointer flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#004346] hover:bg-[#508991] text-white text-xs font-extrabold transition-all shadow-sm">
+                    PDF Export
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1527,7 +2751,7 @@ export default function Dashboard() {
                       <TabletIcon c="w-10 h-10 text-gray-200 mb-3"/>
                       <p className="text-sm font-bold text-gray-400">No medicines to track.</p>
                     </div>
-                  ) : medicines.filter(m => !m.is_deleted).map(med => {
+                  ) : medicines.filter(m => !m.is_deleted && (!globalMedSearch || (m.name||'').toLowerCase().includes(globalMedSearch.toLowerCase()))).map(med => {
                     const medLogs = history.filter(log => log.medicine_id === med.id);
                     const taken = medLogs.filter(l => l.status === "taken").length;
                     const total = medLogs.length;
@@ -1564,7 +2788,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="space-y-6 divide-y divide-gray-100">
-                      {medicines.filter(m => !m.is_deleted).map((med, idx) => (
+                      {medicines.filter(m => !m.is_deleted && (!globalMedSearch || (m.name||'').toLowerCase().includes(globalMedSearch.toLowerCase()))).map((med, idx) => (
                         <div key={med.id} className={`flex flex-col md:flex-row md:items-center justify-between gap-4 ${idx > 0 ? "pt-6" : ""}`}>
                           <div className="flex items-center gap-3 md:min-w-[180px]">
                             <div className="w-10 h-10 rounded-xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center shrink-0">
@@ -1612,7 +2836,7 @@ export default function Dashboard() {
                     <PillIcon c="w-12 h-12 text-gray-200 mb-4"/>
                     <p className="text-sm font-bold text-gray-400">No medicines to display.</p>
                   </div>
-                ) : medicines.filter(m => !m.is_deleted).map((med, idx) => {
+                ) : medicines.filter(m => !m.is_deleted && (!globalMedSearch || (m.name||'').toLowerCase().includes(globalMedSearch.toLowerCase()))).map((med, idx) => {
                   const medLogs = history.filter(log => log.medicine_id === med.id);
                   const taken   = medLogs.filter(l => l.status === "taken").length;
                   const missed  = medLogs.filter(l => l.status === "missed").length;
@@ -1656,7 +2880,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ════ HISTORY TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ HISTORY TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "history" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -1666,7 +2890,7 @@ export default function Dashboard() {
               </div>
               {histLoading && <span className="text-xs text-gray-400 animate-pulse">Loading...</span>}
             </div>
-            {history.length === 0 ? (
+            {history.filter(log => !globalMedSearch || (log.medicine_name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).length === 0 ? (
               <div className="flex flex-col items-center justify-center p-14 sm:p-16 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
                 <Clock c="w-12 h-12 text-gray-200 mb-4"/><p className="text-sm font-bold text-gray-400">No history records yet.</p>
               </div>
@@ -1679,7 +2903,7 @@ export default function Dashboard() {
                     ))}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
-                    {history.map(log=>(
+                    {history.filter(log => !globalMedSearch || (log.medicine_name||'').toLowerCase().includes(globalMedSearch.toLowerCase())).map(log=>(
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 sm:px-5 py-3 font-bold text-[#004346]">{log.medicine_name}</td>
                         <td className="px-4 sm:px-5 py-3 text-gray-500 text-xs">{log.log_date||log.taken_at?.slice(0,10)}</td>
@@ -1706,7 +2930,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ════ SETTINGS TAB ════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉ SETTINGS TAB ΓòÉΓòÉΓòÉΓòÉ */}
         {tab === "settings" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
             <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100">
@@ -1727,6 +2951,7 @@ export default function Dashboard() {
                     <div><label className="label">Age</label><input type="number" className={inp+" text-xs"} value={profileForm.age} onChange={e=>setProfileForm({...profileForm,age:e.target.value})} placeholder="25"/></div>
                     <div><label className="label">Weight (kg)</label><input type="number" className={inp+" text-xs"} value={profileForm.weight} onChange={e=>setProfileForm({...profileForm,weight:e.target.value})} placeholder="70"/></div>
                     <div><label className="label">Height (cm)</label><input type="number" className={inp+" text-xs"} value={profileForm.height} onChange={e=>setProfileForm({...profileForm,height:e.target.value})} placeholder="170"/></div>
+                    <div className="col-span-2"><label className="label">Blood Group</label><input className={inp+" text-xs"} value={profileForm.blood_group} onChange={e=>setProfileForm({...profileForm,blood_group:e.target.value})} placeholder="e.g. O+, A-"/></div>
                   </div>
                 )}
                 <div><label className="label">Email (read-only)</label><input className={inp+" cursor-not-allowed text-gray-400"} value={user?.email||""} disabled/></div>
@@ -1749,8 +2974,264 @@ export default function Dashboard() {
                 </button>
               </form>
             </div>
+
+            {/* Danger Zone – Delete Account */}
+            <div className="md:col-span-2 bg-rose-50/50 p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] border border-rose-200/60 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-extrabold text-lg text-rose-700 flex items-center gap-2">
+                    <Trash c="w-5 h-5 text-rose-600"/> Danger Zone — Delete Account
+                  </h3>
+                  <p className="text-xs text-rose-600/80 mt-1 max-w-xl">
+                    Permanently delete your PillSync account. All your profile data, active schedules, adherence reports, and intake history will be permanently erased.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowDeleteAccountModal(true)}
+                  className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition-all shadow-md shadow-rose-600/20 cursor-pointer whitespace-nowrap">
+                  Delete Account
+                </button>
+              </div>
+            </div>
           </div>
         )}
+
+        {/* ████ AI ASSISTANT TAB ████ */}
+        {tab === "ai" && (
+          <div className="bg-white rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100 overflow-hidden" style={{height:"calc(100vh - 240px)"}}>
+            <div className="border-b border-gray-100 px-5 sm:px-8 py-4 sm:py-5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#004346] to-[#508991] flex items-center justify-center shadow-md">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-lg text-[#004346]">PillSync AI Assistant</h3>
+                <p className="text-xs text-gray-400">Ask me anything about your medicines, dosages, or health.</p>
+              </div>
+            </div>
+            <div className="flex flex-col h-[calc(100%-80px)]">
+              <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-5 space-y-4" id="ai-chat-area">
+                {aiMessages.length === 0 && (
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#004346] to-[#508991] flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    </div>
+                    <h4 className="text-lg font-extrabold text-[#004346] mb-1">Welcome to PillSync AI</h4>
+                    <p className="text-sm text-gray-400 max-w-md mx-auto">I can help you understand your medicines, check for interactions, explain dosages, and answer health-related questions.</p>
+                    <div className="flex flex-wrap justify-center gap-2 mt-6">
+                      {["What are my active medicines?","When should I take my next dose?","Any refills needed soon?"].map(q=>(
+                        <button key={q} onClick={()=>setAiInput(q)} className="px-4 py-2 bg-[#D6F3F4] hover:bg-[#508991]/20 text-[#004346] rounded-2xl text-xs font-bold transition-all cursor-pointer">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {aiMessages.map((msg, i)=>(
+                  <div key={i} className={`flex ${msg.role==="user"?"justify-end":"justify-start"}`}>
+                    <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm font-semibold ${msg.role==="user"?"bg-[#004346] text-white rounded-br-md":"bg-gray-100 text-gray-800 rounded-bl-md"}`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {aiLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-gray-500 font-semibold animate-pulse">Thinking...</div>
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-gray-100 px-5 sm:px-8 py-4">
+                <form onSubmit={async e=>{
+                  e.preventDefault();
+                  if(!aiInput.trim()||aiLoading) return;
+                  const q=aiInput.trim(); setAiInput(""); setAiMessages(p=>[...p,{role:"user",content:q}]); setAiLoading(true);
+                  try {
+                    const res = await axios.post(`${API}/chat/ask`, { query: q }, { headers: { Authorization: `Bearer ${token}` } });
+                    setAiMessages(p=>[...p,{role:"assistant",content:res.data?.response||res.data?.reply||"I can help with that! However, please consult your doctor for medical advice."}]);
+                  } catch {
+                    setAiMessages(p=>[...p,{role:"assistant",content:`Based on your profile, you have ${medicines.filter(m=>!m.is_deleted).length} active medicines with ${adherence.adherence_pct}% adherence. For specific medical questions, please consult your healthcare provider.`}]);
+                  } finally { setAiLoading(false); }
+                }} className="flex gap-2">
+                  <input value={aiInput} onChange={e=>setAiInput(e.target.value)} placeholder="Ask PillSync AI anything..." className="flex-1 px-4 py-3 rounded-2xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold outline-none focus:border-[#508991] transition-colors"/>
+                  <button type="submit" disabled={aiLoading||!aiInput.trim()} className="px-5 py-3 rounded-2xl bg-[#004346] hover:bg-[#508991] text-white font-bold text-sm cursor-pointer transition-all disabled:opacity-50 shrink-0">Send</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ████ EMERGENCY CONTACTS TAB ████ */}
+        {tab === "emergency" && (
+          <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-sm border border-gray-100">
+            <div className="border-b border-gray-100 pb-4 mb-5 sm:mb-6">
+              <h3 className="font-extrabold text-lg text-[#004346] flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                Emergency Contacts
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">People to contact in case of a medical emergency.</p>
+            </div>
+            <div className="space-y-3">
+              {emergencyContacts.length === 0 ? (
+                <div className="text-center py-12">
+                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                  <p className="text-sm font-bold text-gray-400">No emergency contacts added yet</p>
+                  <p className="text-xs text-gray-300 mt-1">Add contacts who should be notified in emergencies.</p>
+                </div>
+              ) : emergencyContacts.map((c,i)=>(
+                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                  <div className="w-10 h-10 rounded-xl bg-[#D6F3F4] text-[#004346] font-extrabold flex items-center justify-center uppercase text-sm">{c.name?.slice(0,2)}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#004346]">{c.name}</p>
+                    <p className="text-xs text-gray-400">{c.phone} • {c.relation}</p>
+                  </div>
+                  <button onClick={()=>setEmergencyContacts(p=>p.filter((_,j)=>j!==i))} className="text-rose-400 hover:text-rose-600 cursor-pointer"><Trash c="w-4 h-4"/></button>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={e=>{
+              e.preventDefault();
+              const fd=new FormData(e.target);
+              const name=fd.get("name"), phone=fd.get("phone"), relation=fd.get("relation");
+              if(!name||!phone) return;
+              setEmergencyContacts(p=>[...p,{name,phone,relation:relation||"Other"}]);
+              e.target.reset();
+              showToast("Emergency contact added!");
+            }} className="mt-6 p-4 rounded-2xl bg-[#D6F3F4]/40 border border-[#508991]/15">
+              <p className="text-[10px] font-extrabold text-[#004346] uppercase tracking-wide mb-3">Add New Contact</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input name="name" placeholder="Full Name" className="input text-xs" required/>
+                <input name="phone" placeholder="Phone Number" type="tel" className="input text-xs" required/>
+                <input name="relation" placeholder="Relation (e.g. Spouse, Parent)" className="input text-xs"/>
+              </div>
+              <button type="submit" className="mt-3 px-5 py-2.5 rounded-2xl bg-[#004346] hover:bg-[#508991] text-white font-bold text-xs cursor-pointer transition-all">Add Contact</button>
+            </form>
+          </div>
+        )}
+
+        {/* ████ REFILL PREDICTOR TAB ████ */}
+        {tab === "refill" && (
+          <RefillPredictionWidget
+            token={token}
+            patientId={effectivePatientId}
+            showToast={showToast}
+            loadMedicines={loadSchedule}
+          />
+        )}
+
+      </div>{/* end main content */}
+      </div>{/* end flex layout */}
+
+      {/* ── FLOATING AI ASSISTANT CHATBOT ── */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        {/* Chat Window */}
+        {aiChatOpen && (
+          <div className="mb-4 w-96 max-w-[calc(100vw-32px)] h-[500px] bg-white rounded-3xl border border-gray-100 shadow-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease]">
+            {/* Header */}
+            <div className="bg-[#004346] text-white px-5 py-4 flex items-center justify-between shadow-md shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center border border-white/5">
+                  <svg className="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm leading-tight">PillSync AI Assistant</h4>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>
+                    <p className="text-[10px] text-white/70 font-semibold">Ready to help</p>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setAiChatOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 flex items-center justify-center transition-all cursor-pointer">
+                <X c="w-4 h-4 text-white"/>
+              </button>
+            </div>
+
+            {/* Message Area */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
+              {aiMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center border border-[#508991]/10">
+                    <svg className="w-6 h-6 text-[#004346]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-sm text-[#004346]">Your AI Companion</p>
+                    <p className="text-xs text-gray-400 mt-1 max-w-[200px]">Ask me anything about your active medicines, schedules, or vitals!</p>
+                  </div>
+                </div>
+              ) : (
+                aiMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`p-3.5 rounded-2xl text-xs max-w-[85%] leading-relaxed shadow-xs ${
+                      msg.role === "user" 
+                        ? "bg-[#004346] text-white rounded-tr-none font-medium" 
+                        : "bg-white text-[#172A3A] border border-gray-100 rounded-tl-none font-medium"
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))
+              )}
+              {aiLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-100 p-3.5 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-xs">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}/>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}/>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}/>
+                  </div>
+                </div>
+              )}
+              <div ref={floatingChatEndRef} />
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const q = aiInput.trim();
+              if (!q) return;
+              setAiInput("");
+              setAiMessages(p => [...p, { role: "user", content: q }]);
+              setAiLoading(true);
+              try {
+                const res = await axios.post(`${API}/chat/ask`, { query: q }, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                setAiMessages(p => [...p, { role: "assistant", content: res.data?.response || res.data?.reply || "I am here to help! Consult your doctor for medical advice." }]);
+              } catch {
+                setAiMessages(p => [...p, { role: "assistant", content: `Based on your profile, you have ${medicines.filter(m=>!m.is_deleted).length} active medicines. For medical advice, please consult your physician.` }]);
+              } finally {
+                setAiLoading(false);
+              }
+            }} className="p-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0">
+              <input
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-gray-50 border border-gray-100 hover:border-gray-200 focus:border-[#004346] focus:bg-white rounded-2xl px-4 py-2.5 text-xs font-bold text-[#004346] outline-none transition-all placeholder:text-gray-400"
+              />
+              <button type="submit" disabled={aiLoading} className="w-9 h-9 rounded-xl bg-[#004346] hover:bg-[#508991] text-white flex items-center justify-center transition-all cursor-pointer disabled:opacity-55 shrink-0">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Floating Bubble FAB Button */}
+        <button
+          onClick={() => setAiChatOpen(o => !o)}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl hover:scale-105 border-4 border-white cursor-pointer ${
+            aiChatOpen ? "bg-rose-500 hover:bg-rose-600 rotate-90 text-white" : "bg-[#004346] hover:bg-[#508991] text-white"
+          }`}
+          title="Ask AI Assistant"
+        >
+          {aiChatOpen ? (
+            <X c="w-6 h-6 text-white"/>
+          ) : (
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* ── TOAST ── */}
