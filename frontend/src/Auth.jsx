@@ -79,6 +79,9 @@ export default function Auth({ mode }) {
   const [passwordError, setPasswordError] = useState("");
   const [codeError, setCodeError] = useState("");
   const [codeSent, setCodeSent] = useState(false);
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneNum, setPhoneNum] = useState("");
+
 
   const handle = (e) => {
     const { name, value } = e.target;
@@ -177,7 +180,7 @@ export default function Auth({ mode }) {
             email: form.email,
             password: form.password,
             role: form.role,
-            phone: form.phone || null
+            phone: phoneNum ? `${countryCode}${phoneNum}` : null
           };
           // Only add patient vital stats if role is patient
           if (form.role === "patient") {
@@ -357,16 +360,29 @@ export default function Auth({ mode }) {
                     <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
                       Phone Number (optional)
                     </label>
-                    <input 
-                      name="phone" 
-                      type="tel"
-                      pattern="[0-9]{10}"
-                      title="Please enter a 10 digit phone number"
-                      placeholder="Enter Your Phone Number" 
-                      value={form.phone}
-                      onChange={handle} 
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
-                    />
+                    <div className="flex rounded-2xl border-2 border-gray-100 focus-within:border-[#2D5B53] bg-white/70 backdrop-blur-sm overflow-hidden transition-all">
+                      <select 
+                        value={countryCode} 
+                        onChange={e => setCountryCode(e.target.value)} 
+                        className="px-3 text-sm font-semibold text-[#0C3C34] bg-transparent outline-none border-r border-gray-100 cursor-pointer"
+                      >
+                        <option value="+91">+91</option>
+                        <option value="+1">+1</option>
+                        <option value="+44">+44</option>
+                        <option value="+61">+61</option>
+                        <option value="+971">+971</option>
+                        <option value="+82">+82</option>
+                        <option value="+33">+33</option>
+                      </select>
+                      <input 
+                        type="tel"
+                        placeholder="10 digit number" 
+                        value={phoneNum}
+                        onChange={e => setPhoneNum(e.target.value.replace(/\D/g, "").slice(0, 10))} 
+                        maxLength={10}
+                        className="flex-1 px-4 py-3 outline-none text-sm bg-transparent placeholder:text-gray-400 font-semibold border-none focus:ring-0"
+                      />
+                    </div>
                   </div>
 
                   {/* Role Select */}

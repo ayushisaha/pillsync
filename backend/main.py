@@ -72,10 +72,35 @@ EXPIRE        = 1440          # minutes (1 day)
 SENDGRID_KEY   = os.getenv("SENDGRID_API_KEY", "")
 FROM_EMAIL     = os.getenv("SENDGRID_FROM_EMAIL", os.getenv("FROM_EMAIL", "noreply@pillsync.app"))
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-specdec")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY", "BPpyicKy2w0oQU4T2PLf8zpHOJAbsPnJ5zBRWRX0S9sC7G-QKjjsTZ8d0nWrGryIAe6dAN-xj9EoXEquKXmqyt0")
+VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIMS      = {"sub": "mailto:noreply@pillsync.app"}
+
+def call_groq_with_fallback(client, **kwargs):
+    """Executes a Groq completion call with model fallbacks if a model gets decommissioned."""
+    models_to_try = [
+        GROQ_MODEL,
+        "llama-3.3-70b-specdec",
+        "qwen-2.5-32b",
+        "llama-3.1-8b-instant",
+        "llama3-70b-8192"
+    ]
+    # Remove duplicates while preserving order
+    models_to_try = list(dict.fromkeys(models_to_try))
+    
+    last_err = None
+    for m in models_to_try:
+        try:
+            kwargs["model"] = m
+            # Clean optional parameters if None
+            clean_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            return client.chat.completions.create(**clean_kwargs)
+        except Exception as e:
+            last_err = e
+            logging.warning(f"[GROQ] Model {m} failed: {e}. Trying fallback model...")
+    raise last_err
 
 # ── Medicine Name Verification via RxNorm + OpenFDA (no API key needed) ──
 async def verify_medicine_name_api(name: str) -> dict:
@@ -190,9 +215,40 @@ async def verify_medicine_name_api(name: str) -> dict:
             except Exception:
                 pass
 
+            # 5. Try Groq LLaMA or Gemini LLM verification as ultimate fallback
+            if GROQ_AVAILABLE and GROQ_API_KEY:
+                try:
+                    from groq import Groq
+                    client = Groq(api_key=GROQ_API_KEY)
+                    sys_prompt = (
+                        "You are a clinical pharmacist assistant. Verify if the provided term is a real medication, "
+                        "active pharmaceutical ingredient, or therapeutic compound (brand name or generic name, "
+                        "including Indian brand names). Reply ONLY with a valid JSON object in this format: "
+                        '{"valid": true/false, "canonical": "Correctly Spelled Name"}'
+                    )
+                    resp = call_groq_with_fallback(
+                        client,
+                        messages=[
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": f"Term: {q}"}
+                        ],
+                        response_format={"type": "json_object"},
+                        timeout=4.0
+                    )
+                    ai_res = json.loads(resp.choices[0].message.content)
+                    if ai_res.get("valid") is True:
+                        result["valid"] = True
+                        result["canonical"] = ai_res.get("canonical") or q.title()
+                        result["suggestions"] = [result["canonical"]]
+                        result["source"] = "groq_llm"
+                        return result
+                except Exception as ex:
+                    logging.warning(f"Groq verification fallback failed: {ex}")
+
     except Exception:
         pass
     return result
+
 
 
 # ══════════════════════════════════════════════════════════
@@ -572,10 +628,11 @@ def send_verification_email(to_email: str, code: str, purpose: str):
             from_email=FROM_EMAIL,
             to_emails=to_email,
             subject=f"PillSync Verification Code: {code}",
+            plain_text_content=f"Your PillSync verification code for {purpose_text} is {code}. Valid for 15 minutes.",
             html_content=f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;
                         background:#f0fafa;border-radius:16px;border:1px solid #004346">
-              <h2 style="color:#004346;margin-top:0">🔑 Verification Code</h2>
+              <h2 style="color:#004346;margin-top:0">Verification Code</h2>
               <p>You requested a verification code for <strong>{purpose_text}</strong> on your PillSync account.</p>
               <div style="background:#004346;color:white;padding:16px;text-align:center;border-radius:12px;font-size:24px;font-weight:bold;margin:16px 0;letter-spacing:4px">
                 <span style="color:#ffffff">{code}</span>
@@ -603,10 +660,11 @@ def send_reminder_email(to_email: str, patient_name: str, medicine_name: str, sc
             from_email=FROM_EMAIL,
             to_emails=to_email,
             subject=f"PillSync Reminder: Take {medicine_name}",
+            plain_text_content=f"Hi {patient_name}, it's time to take your {medicine_name} scheduled for {scheduled_time}.",
             html_content=f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;
                         background:#f0fafa;border-radius:16px">
-              <h2 style="color:#004346">💊 Medicine Reminder</h2>
+              <h2 style="color:#004346">Medicine Reminder</h2>
               <p>Hi <strong>{patient_name}</strong>,</p>
               <p>It's time to take your <strong>{medicine_name}</strong> scheduled for
                  <strong>{scheduled_time}</strong>.</p>
@@ -638,10 +696,11 @@ def send_creation_email(to_email: str, patient_name: str, medicine_name: str, ca
             from_email=FROM_EMAIL,
             to_emails=to_email,
             subject=f"PillSync: New Medicine Added ({medicine_name})",
+            plain_text_content=f"Hi {patient_name}, new medicine {medicine_name} ({category}, {dosage}) has been added to your PillSync schedule.",
             html_content=f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;
                         background:#f0fafa;border-radius:16px;border:1px solid #004346">
-              <h2 style="color:#004346;margin-top:0">💊 New Medicine Added</h2>
+              <h2 style="color:#004346;margin-top:0">New Medicine Added</h2>
               <p>Hi <strong>{patient_name}</strong>,</p>
               <p>A new medicine has been successfully added to your PillSync schedule:</p>
               <table style="width:100%;font-size:14px;border-collapse:collapse;margin:16px 0">
@@ -673,11 +732,12 @@ def send_low_stock_email(to_email: str, patient_name: str, medicine_name: str, c
         message = Mail(
             from_email=FROM_EMAIL,
             to_emails=to_email,
-            subject=f"⚠️ Low Stock Alert: {medicine_name} needs refill",
+            subject=f"PillSync Low Stock Alert: {medicine_name} needs refill",
+            plain_text_content=f"Hi {patient_name}, your medicine {medicine_name} is running low ({stock_display} left). Please refill your prescription.",
             html_content=f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;
                         background:#fff5f5;border-radius:16px;border:1px solid #e53e3e">
-              <h2 style="color:#c53030;margin-top:0">⚠️ Low Stock / Refill Alert</h2>
+              <h2 style="color:#c53030;margin-top:0">Low Stock / Refill Alert</h2>
               <p>Hi <strong>{patient_name}</strong>,</p>
               <p>Your medicine <strong>{medicine_name}</strong> is running low and needs to be restored immediately!</p>
               <div style="background:#fff;padding:16px;border-radius:12px;border:1px solid #fed7d7;margin:16px 0">
@@ -700,23 +760,30 @@ def send_low_stock_email(to_email: str, patient_name: str, medicine_name: str, c
 def send_web_push(subscription_info: dict, payload_data: dict) -> bool:
     """Send a Web Push notification to a subscribed client browser."""
     if not WEBPUSH_AVAILABLE:
-        logging.info(f"[WEB PUSH] pywebpush unavailable. Would push: {payload_data}")
         return False
     try:
+        priv_key = (VAPID_PRIVATE_KEY or "").replace('\\n', '\n').strip()
+        if not priv_key:
+            return False
+
+        from py_vapid import Vapid
+        vapid_obj = Vapid.from_pem(priv_key.encode('utf-8'))
         webpush(
             subscription_info=subscription_info,
             data=json.dumps(payload_data),
-            vapid_private_key=VAPID_PRIVATE_KEY or "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIJlubtxNODKuzG1mYv6o81zLotJ7d4hlYL4/5ntfZiv1oAoGCCqGSM49\nAwEHoUQDQgAE+nKJwrLbDShBThPY8t/zOkc4kBuw+cnnMFFZFfRL2wLsb5AqOOxN\nnx3SdasavIgB7p0A37GP0ShcSq4pearK3Q==\n-----END EC PRIVATE KEY-----\n",
+            vapid_private_key=vapid_obj,
             vapid_claims=VAPID_CLAIMS,
         )
         logging.info("[WEB PUSH] Push alert delivered successfully")
         return True
     except WebPushException as ex:
-        logging.warning(f"[WEB PUSH] Delivery failed: {ex}")
+        logging.debug(f"[WEB PUSH] Subscription delivery result: {ex}")
         return False
     except Exception as ex:
-        logging.error(f"[WEB PUSH] Error sending push: {ex}")
+        logging.debug(f"[WEB PUSH] Push skipped: {ex}")
         return False
+
+
 
 
 def run_refill_warning_check():
@@ -1152,13 +1219,20 @@ def delete_caregiver(
 # ══════════════════════════════════════════════════════════
 
 @app.post("/medicines", tags=["Medicines"])
-def add_medicine(
+async def add_medicine(
     data:       MedicineCreate,
     patient_id: Optional[int] = Query(None),
     db:         Session       = Depends(get_db),
     user:       User          = Depends(get_current_user),
 ):
+    # Validate medicine name
+    if data.name:
+        vres = await verify_medicine_name_api(data.name)
+        if not vres["valid"]:
+            raise HTTPException(400, f"'{data.name}' is not recognized as a valid medicine brand or generic name.")
+            
     target_id = _resolve_target(user, patient_id)
+
     # Parse optional date strings
     start_d = None
     end_d   = None
@@ -1245,7 +1319,7 @@ def history_predict(
 
 
 @app.patch("/medicines/{med_id}", tags=["Medicines"])
-def update_medicine(
+async def update_medicine(
     med_id:     int,
     data:       MedicineUpdate,
     patient_id: Optional[int] = Query(None),
@@ -1256,7 +1330,12 @@ def update_medicine(
     med = db.query(Medicine).filter(Medicine.id == med_id, Medicine.user_id == target_id).first()
     if not med:
         raise HTTPException(404, "Medicine not found")
-    if data.name        is not None: med.name        = data.name
+    if data.name is not None:
+        vres = await verify_medicine_name_api(data.name)
+        if not vres["valid"]:
+            raise HTTPException(400, f"'{data.name}' is not recognized as a valid medicine brand or generic name.")
+        med.name = data.name
+
     if data.description is not None: med.description = data.description
     if data.dosage      is not None: med.dosage      = data.dosage
     if data.category    is not None: med.category    = data.category
@@ -1921,8 +2000,8 @@ Respond ONLY with this exact JSON format (no markdown, no extra text, no explana
     }}
   ]
 }}"""
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+            completion = call_groq_with_fallback(
+                client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.05
             )
@@ -2186,6 +2265,43 @@ def get_adherence_analytics(
             "adherence_pct": pct
         })
 
+    # 30-Day Monthly Trend (4 Weekly Blocks)
+    monthly_trend = []
+    total_missed_30 = 0
+    for w in range(3, -1, -1):
+        w_start = today - timedelta(days=(w + 1) * 7 - 1)
+        w_end = today - timedelta(days=w * 7)
+        w_logs = db.query(IntakeLog).filter(
+            IntakeLog.user_id == target_id,
+            IntakeLog.log_date >= w_start.strftime("%Y-%m-%d"),
+            IntakeLog.log_date <= w_end.strftime("%Y-%m-%d")
+        ).all()
+        w_taken = sum(1 for l in w_logs if l.status == "taken")
+        w_missed = sum(1 for l in w_logs if l.status == "missed")
+        total_missed_30 += w_missed
+        w_total = max(len(w_logs), total_daily_schedules * 7)
+        w_pct = round((w_taken / w_total * 100)) if w_total > 0 else 0
+        monthly_trend.append({
+            "label": f"Wk {4 - w}",
+            "period": f"{w_start.strftime('%b %d')} - {w_end.strftime('%b %d')}",
+            "taken": w_taken,
+            "missed": w_missed,
+            "adherence_pct": w_pct
+        })
+
+    # Refill Stock Overview
+    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).all()
+    full_stock_count = 0
+    refill_needed_count = 0
+    out_of_stock_count = 0
+    for m in meds:
+        if m.stock <= 0:
+            out_of_stock_count += 1
+        elif m.stock <= 10:
+            refill_needed_count += 1
+        else:
+            full_stock_count += 1
+
     if not active_med_ids or total_scheduled == 0:
         overall_pct = 0
         consistency_grade = "No Active Medicines"
@@ -2202,8 +2318,15 @@ def get_adherence_analytics(
         "overall_pct": overall_pct,
         "total_taken": total_taken,
         "total_scheduled": total_scheduled,
+        "total_missed_30": total_missed_30,
         "consistency_grade": consistency_grade,
-        "weekly_trend": trend
+        "weekly_trend": trend,
+        "monthly_trend": monthly_trend,
+        "stock_overview": {
+            "full_stock": full_stock_count,
+            "refill_recommended": refill_needed_count,
+            "out_of_stock": out_of_stock_count
+        }
     }
 
 
@@ -2291,6 +2414,26 @@ def delete_emergency_contact(
     return {"success": True, "message": "Emergency contact deleted"}
 
 
+@app.patch("/emergency-contacts/{contact_id}", tags=["Emergency Contacts"])
+def update_emergency_contact(
+    contact_id: int,
+    data:       EmergencyContactCreateSchema,
+    db:         Session = Depends(get_db),
+    user:       User    = Depends(get_current_user)
+):
+    contact = db.query(EmergencyContact).filter(EmergencyContact.id == contact_id, EmergencyContact.user_id == user.id).first()
+    if not contact:
+        raise HTTPException(404, "Emergency contact not found")
+    contact.name = data.name
+    contact.phone = data.phone
+    contact.relation = data.relation
+    contact.email = data.email
+    db.commit()
+    db.refresh(contact)
+    return {"id": contact.id, "name": contact.name, "phone": contact.phone, "relation": contact.relation, "email": getattr(contact, "email", None)}
+
+
+
 # ══════════════════════════════════════════════════════════
 #  AI CHATBOT ASSISTANT
 # ══════════════════════════════════════════════════════════
@@ -2310,8 +2453,8 @@ def ask_chatbot(data: ChatAskSchema, user: User = Depends(get_current_user)):
             "No lengthy explanations. If about dosage changes, add: 'Consult your doctor before changing doses.'"
         )
         
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        completion = call_groq_with_fallback(
+            client,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": data.query}
