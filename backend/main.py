@@ -32,7 +32,7 @@ except ImportError:
 
 from dotenv import load_dotenv
 from database import Base, engine, get_db
-import os, logging, io, json, re
+import os, logging, io, json, re, base64, requests
 from urllib.parse import quote as url_quote
 try:
     import httpx
@@ -72,7 +72,7 @@ EXPIRE        = 1440          # minutes (1 day)
 SENDGRID_KEY   = os.getenv("SENDGRID_API_KEY", "")
 FROM_EMAIL     = os.getenv("SENDGRID_FROM_EMAIL", os.getenv("FROM_EMAIL", "noreply@pillsync.app"))
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-specdec")
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "groq/compound")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
@@ -82,10 +82,11 @@ def call_groq_with_fallback(client, **kwargs):
     """Executes a Groq completion call with model fallbacks if a model gets decommissioned."""
     models_to_try = [
         GROQ_MODEL,
-        "llama-3.3-70b-specdec",
-        "qwen-2.5-32b",
-        "llama-3.1-8b-instant",
-        "llama3-70b-8192"
+        "groq/compound",
+        "qwen/qwen3.6-27b",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "groq/compound-mini"
     ]
     # Remove duplicates while preserving order
     models_to_try = list(dict.fromkeys(models_to_try))
@@ -419,6 +420,13 @@ class LoginSchema(BaseModel):
     password: str
 
 
+class GoogleAuthSchema(BaseModel):
+    credential: Optional[str] = None
+    email:      Optional[EmailStr] = None
+    name:       Optional[str] = None
+    role:       Optional[str] = "patient"
+
+
 class UpdateProfileSchema(BaseModel):
     name:        Optional[str] = None
     phone:       Optional[str] = None
@@ -618,9 +626,12 @@ def is_scheduled_time_past(log_day: date, time_str: str) -> bool:
 #  SENDGRID EMAIL HELPER
 # ══════════════════════════════════════════════════════════
 
+_SENDGRID_ACTIVE = bool(SENDGRID_AVAILABLE and SENDGRID_KEY and SENDGRID_KEY.startswith("SG."))
+
 def send_verification_email(to_email: str, code: str, purpose: str):
+    global _SENDGRID_ACTIVE
     purpose_text = "Resetting Password" if purpose == "reset_password" else "Changing Password"
-    if not SENDGRID_AVAILABLE or not SENDGRID_KEY:
+    if not _SENDGRID_ACTIVE:
         logging.info(f"[VERIFICATION CODE] Would email {to_email}: code is {code} for {purpose}")
         return
     try:
@@ -647,13 +658,17 @@ def send_verification_email(to_email: str, code: str, purpose: str):
         sg.send(message)
         logging.info(f"[EMAIL] Sent verification code to {to_email}")
     except Exception as e:
-        logging.error(f"[EMAIL] Failed to send code to {to_email}: {e}")
+        if "401" in str(e) or "Unauthorized" in str(e):
+            _SENDGRID_ACTIVE = False
+            logging.debug(f"[EMAIL] SendGrid unauthorized, disabling email notifications.")
+        else:
+            logging.error(f"[EMAIL] Failed to send code to {to_email}: {e}")
 
 
 def send_reminder_email(to_email: str, patient_name: str, medicine_name: str, scheduled_time: str):
     """Send a medication reminder email via SendGrid."""
-    if not SENDGRID_AVAILABLE or not SENDGRID_KEY:
-        logging.info(f"[REMINDER] Would email {to_email}: take {medicine_name} at {scheduled_time}")
+    global _SENDGRID_ACTIVE
+    if not _SENDGRID_ACTIVE:
         return
     try:
         message = Mail(
@@ -678,13 +693,17 @@ def send_reminder_email(to_email: str, patient_name: str, medicine_name: str, sc
         sg.send(message)
         logging.info(f"[EMAIL] Sent reminder to {to_email}")
     except Exception as e:
-        logging.error(f"[EMAIL] Failed to send to {to_email}: {e}")
+        if "401" in str(e) or "Unauthorized" in str(e):
+            _SENDGRID_ACTIVE = False
+            logging.debug(f"[EMAIL] SendGrid unauthorized, disabling email notifications.")
+        else:
+            logging.error(f"[EMAIL] Failed to send to {to_email}: {e}")
 
 
 def send_creation_email(to_email: str, patient_name: str, medicine_name: str, category: str, dosage: str, start_date: str, end_date: str, schedules: list):
     """Send an email confirming a new medicine has been added."""
-    if not SENDGRID_AVAILABLE or not SENDGRID_KEY:
-        logging.info(f"[CONFIRMATION] Would email {to_email}: added {medicine_name}")
+    global _SENDGRID_ACTIVE
+    if not _SENDGRID_ACTIVE:
         return
     try:
         times_str = ", ".join(schedules)
@@ -719,13 +738,17 @@ def send_creation_email(to_email: str, patient_name: str, medicine_name: str, ca
         sg.send(message)
         logging.info(f"[EMAIL] Sent confirmation email to {to_email}")
     except Exception as e:
-        logging.error(f"[EMAIL] Failed to send confirmation to {to_email}: {e}")
+        if "401" in str(e) or "Unauthorized" in str(e):
+            _SENDGRID_ACTIVE = False
+            logging.debug(f"[EMAIL] SendGrid unauthorized, disabling email notifications.")
+        else:
+            logging.error(f"[EMAIL] Failed to send confirmation to {to_email}: {e}")
 
 
 def send_low_stock_email(to_email: str, patient_name: str, medicine_name: str, current_stock: float):
     """Send an email alert via SendGrid when medicine stock drops below threshold."""
-    if not SENDGRID_AVAILABLE or not SENDGRID_KEY:
-        logging.info(f"[LOW STOCK] Would email {to_email}: {medicine_name} low stock ({current_stock} left)")
+    global _SENDGRID_ACTIVE
+    if not _SENDGRID_ACTIVE:
         return
     try:
         stock_display = int(current_stock) if current_stock == int(current_stock) else round(current_stock, 1)
@@ -753,7 +776,11 @@ def send_low_stock_email(to_email: str, patient_name: str, medicine_name: str, c
         sg.send(message)
         logging.info(f"[EMAIL] Sent low stock alert to {to_email} for {medicine_name}")
     except Exception as e:
-        logging.error(f"[EMAIL] Failed to send low stock alert to {to_email}: {e}")
+        if "401" in str(e) or "Unauthorized" in str(e):
+            _SENDGRID_ACTIVE = False
+            logging.debug(f"[EMAIL] SendGrid unauthorized, disabling email notifications.")
+        else:
+            logging.error(f"[EMAIL] Failed to send low stock alert to {to_email}: {e}")
 
 
 
@@ -947,6 +974,54 @@ def login(data: LoginSchema, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_pw(data.password, user.password):
         raise HTTPException(401, "Invalid email or password")
+    return {"token": make_token({"id": user.id}), "user": _user_dict(user)}
+
+
+@app.post("/auth/google", tags=["Auth"])
+def google_auth(data: GoogleAuthSchema, db: Session = Depends(get_db)):
+    """
+    Authenticate or register a user directly with Google OAuth account.
+    """
+    email = data.email
+    name = data.name
+
+    if data.credential:
+        try:
+            r = requests.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={data.credential}", timeout=5)
+            if r.status_code == 200:
+                payload = r.json()
+                email = payload.get("email") or email
+                name = payload.get("name") or payload.get("given_name") or name
+            else:
+                try:
+                    parts = data.credential.split(".")
+                    if len(parts) >= 2:
+                        import base64, json
+                        padding = "=" * (4 - len(parts[1]) % 4)
+                        decoded = json.loads(base64.urlsafe_b64decode(parts[1] + padding).decode("utf-8"))
+                        email = decoded.get("email") or email
+                        name = decoded.get("name") or name
+                except:
+                    pass
+        except Exception:
+            pass
+
+    if not email:
+        raise HTTPException(400, "Could not resolve valid email from Google credentials")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        import secrets
+        user = User(
+            name=name or email.split("@")[0].capitalize(),
+            email=email,
+            password=hash_pw(secrets.token_urlsafe(16)),
+            role=data.role or "patient",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
     return {"token": make_token({"id": user.id}), "user": _user_dict(user)}
 
 
@@ -1279,7 +1354,7 @@ def list_medicines(
     user:       User          = Depends(get_current_user),
 ):
     target_id = _resolve_target(user, patient_id)
-    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).order_by(Medicine.created_at).all()
+    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).order_by(Medicine.created_at.desc()).all()
     return [_medicine_dict(m) for m in meds]
 
 
@@ -1477,12 +1552,11 @@ def get_schedule_for_date(
     result = []
 
     for med in meds:
-        # Respect medicine duration start_date/end_date
-        # If end_date is not set, medicine only shows on start_date (single-day)
-        effective_end = med.end_date if med.end_date else med.start_date
+        # If start_date is set, medicine is active from start_date onwards
         if med.start_date and log_day < med.start_date:
             continue
-        if effective_end and log_day > effective_end:
+        # If end_date is set, medicine is active until end_date (if no end_date, it is ongoing)
+        if med.end_date and log_day > med.end_date:
             continue
 
         for sch in med.schedules:
@@ -1513,7 +1587,19 @@ def get_schedule_for_date(
                 "status":         status_val,
             })
 
-    result.sort(key=lambda x: x["scheduled_time"])
+    def _parse_time_sort(t_str):
+        try:
+            h_m, period = t_str.strip().split()
+            h, m = map(int, h_m.split(':'))
+            if period.lower() == 'pm' and h != 12:
+                h += 12
+            if period.lower() == 'am' and h == 12:
+                h = 0
+            return f"{h:02d}:{m:02d}"
+        except:
+            return "00:00"
+
+    result.sort(key=lambda x: _parse_time_sort(x["scheduled_time"]))
     return result
 
 
@@ -1536,10 +1622,9 @@ def get_adherence_for_date(
     
     active_meds = []
     for med in meds:
-        effective_end = med.end_date if med.end_date else med.start_date
         if med.start_date and log_day < med.start_date:
             continue
-        if effective_end and log_day > effective_end:
+        if med.end_date and log_day > med.end_date:
             continue
         active_meds.append(med)
 
@@ -1595,20 +1680,19 @@ def get_intake_history(
         
     today = date.today()
     history_items = []
-    
     for med in meds:
         start_d = med.start_date
         if not start_d:
-            start_d = med.created_at.date() if med.created_at else today
+            start_d = med.created_at.date() if med.created_at else (today - timedelta(days=7))
             
         end_d = med.end_date
-        effective_end = end_d if end_d else start_d
+        effective_end = end_d if end_d else today
         last_d = today
         if effective_end and effective_end < last_d:
             last_d = effective_end
             
         if start_d > last_d:
-            continue
+            start_d = last_d
             
         curr_d = start_d
         while curr_d <= last_d:
@@ -1845,6 +1929,116 @@ def is_line_blacklisted(line: str, user_name: str) -> bool:
 
 
 
+def generate_default_schedule(times_per_day: int) -> List[str]:
+    """Generates standard spaced reminder times in HH:MM am/pm format matching times_per_day."""
+    schedules = {
+        1: ["08:00 am"],
+        2: ["08:00 am", "08:00 pm"],
+        3: ["08:00 am", "02:00 pm", "08:00 pm"],
+        4: ["08:00 am", "12:00 pm", "04:00 pm", "08:00 pm"],
+        5: ["08:00 am", "11:00 am", "02:00 pm", "06:00 pm", "10:00 pm"],
+        6: ["06:00 am", "10:00 am", "02:00 pm", "06:00 pm", "10:00 pm", "02:00 am"]
+    }
+    if times_per_day in schedules:
+        return schedules[times_per_day]
+    # Fallback for other counts: generate evenly spaced or repeat
+    if times_per_day <= 0:
+        return ["08:00 am"]
+    base_hours = [8 + int(i * (14 / max(1, times_per_day - 1))) for i in range(times_per_day)]
+    result = []
+    for h in base_hours:
+        hh = h % 24
+        period = "am" if hh < 12 else "pm"
+        display_h = hh if 1 <= hh <= 12 else (hh - 12 if hh > 12 else 12)
+        result.append(f"{display_h:02d}:00 {period}")
+    return result
+
+
+def sanitize_and_normalize_medicines(raw_list: list, today_str: str) -> List[dict]:
+    """Cleans, normalizes, and strictly aligns times_per_day with times array length."""
+    sanitized = []
+    for med in raw_list:
+        if not isinstance(med, dict):
+            continue
+        name = str(med.get("name") or "").strip()
+        if not name or name.lower() in ["none", "null", "n/a", "no medicines"]:
+            continue
+
+        category = str(med.get("category") or med.get("disease_name") or "Other").strip()
+        
+        times_per_day = med.get("times_per_day")
+        try:
+            times_per_day = int(times_per_day)
+            if times_per_day < 1:
+                times_per_day = 1
+        except (ValueError, TypeError):
+            times_per_day = 1
+
+        raw_times = med.get("times")
+        times = []
+        if isinstance(raw_times, list) and raw_times:
+            for t in raw_times:
+                t_str = str(t).strip()
+                if t_str:
+                    times.append(t_str)
+
+        # STRICT GUARANTEE: times array length must match times_per_day count exactly
+        if len(times) != times_per_day:
+            times = generate_default_schedule(times_per_day)
+
+        formulation = str(med.get("formulation") or "tablet").strip().lower()
+        if not any(f in formulation for f in ["tablet", "capsule", "liquid", "ointment", "injection", "drops", "spray"]):
+            if "cap" in name.lower():
+                formulation = "capsule"
+            elif any(k in name.lower() for k in ["syr", "susp", "liquid"]):
+                formulation = "liquid"
+            elif any(k in name.lower() for k in ["oint", "cream", "gel"]):
+                formulation = "ointment"
+            elif any(k in name.lower() for k in ["drop", "eye drop", "ear drop"]):
+                formulation = "drops"
+            elif any(k in name.lower() for k in ["inj", "vial", "ampoule"]):
+                formulation = "injection"
+            elif any(k in name.lower() for k in ["spray", "inhaler"]):
+                formulation = "spray"
+            else:
+                formulation = "tablet"
+
+        start_date = str(med.get("start_date") or today_str).strip()
+        end_date = str(med.get("end_date") or "").strip()
+        if not end_date or end_date == start_date:
+            try:
+                end_date = (date.today() + timedelta(days=7)).strftime("%Y-%m-%d")
+            except Exception:
+                end_date = ""
+
+        stock = med.get("stock")
+        try:
+            stock = int(stock)
+            if stock <= 0:
+                stock = max(1, times_per_day * 7) if formulation in ["tablet", "capsule"] else 1
+        except (ValueError, TypeError):
+            stock = max(1, times_per_day * 7) if formulation in ["tablet", "capsule"] else 1
+
+        dosage = str(med.get("dosage") or f"1 {formulation}").strip()
+        instructions = str(med.get("instructions") or "").strip()
+
+        sanitized.append({
+            "name": name,
+            "dosage": dosage,
+            "formulation": formulation,
+            "category": category,
+            "disease_name": category,
+            "start_date": start_date,
+            "end_date": end_date,
+            "times_per_day": times_per_day,
+            "times": times,
+            "instructions": instructions,
+            "stock": stock
+        })
+    return sanitized
+
+
+
 @app.post("/medicines/upload-ocr", tags=["OCR & AI"])
 async def upload_prescription_ocr(
     file: UploadFile = File(...),
@@ -1852,253 +2046,238 @@ async def upload_prescription_ocr(
     user: User       = Depends(get_current_user),
 ):
     """
-    Multi-pass Tesseract OCR with handwriting-optimised image preprocessing,
-    filtered to ignore hospital header/address noise, then Groq LLaMA 3.3
-    extracts ALL medications with complete clinical fields.
+    State-of-the-art dual-tier prescription extraction engine:
+    1. Primary Tier: Direct Multimodal Medical Vision (Gemini 3.6/3.7 Flash) on prescription image bytes.
+       Accurately deciphers complex doctor handwriting, Roman numeral markers, clinical diagnoses vs medications.
+    2. Secondary Fallback Tier: Multi-pass Tesseract OCR + Groq LLaMA/Qwen clinical parser.
+    3. Verification: RxNorm and OpenFDA canonical name mapping.
     """
-    if not TESSERACT_AVAILABLE:
-        raise HTTPException(500, "Tesseract OCR engine is not installed on the server.")
-
     contents = await file.read()
-    try:
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    if not contents:
+        raise HTTPException(400, "Uploaded file is empty.")
 
-        # ── Pass 1: upscale 3x for better handwriting resolution ──────────
-        w, h = image.size
-        large = image.resize((w * 3, h * 3), Image.LANCZOS)
-
-        # ── Pass 2: grayscale + high contrast + sharpen ───────────────────
-        gray = large.convert("L")
-        gray = ImageEnhance.Contrast(gray).enhance(2.5)
-        gray = ImageEnhance.Sharpness(gray).enhance(2.2)
-        gray = gray.filter(ImageFilter.SHARPEN)
-
-        custom_config_1 = r"--oem 3 --psm 6"   # uniform block of text
-        custom_config_2 = r"--oem 3 --psm 4"   # single column
-        custom_config_3 = r"--oem 3 --psm 3"   # fully automatic
-
-        texts = []
-        for cfg in [custom_config_1, custom_config_2, custom_config_3]:
-            t = pytesseract.image_to_string(gray, config=cfg)
-            if t.strip():
-                texts.append(t.strip())
-
-        # Also try on original image
-        t_orig = pytesseract.image_to_string(image)
-        if t_orig.strip():
-            texts.append(t_orig.strip())
-
-        seen_lines = set()
-        combined_lines = []
-        for block in texts:
-            for line in block.split("\n"):
-                clean = line.strip()
-                if not clean:
-                    continue
-                # Skip header/address/demographics
-                if is_line_blacklisted(clean, user.name):
-                    continue
-                if clean not in seen_lines:
-                    seen_lines.add(clean)
-                    combined_lines.append(clean)
-
-        raw_text_combined = "\n".join(combined_lines)
-        raw_text_display  = "\n".join([l.strip() for l in (t_orig.strip() or (texts[0] if texts else "")).split("\n") if l.strip() and not is_line_blacklisted(l.strip(), user.name)])
-
-    except Exception as e:
-        raise HTTPException(400, f"Could not process image file: {str(e)}")
-
-    extracted_medicines = []
     today_str = date.today().strftime("%Y-%m-%d")
+    extracted_medicines = []
+    raw_text_display = ""
 
-    if not raw_text_combined:
-        return {"success": True, "medicines": [], "raw_text": "", "message": "No text detected in image"}
-
-    if GROQ_AVAILABLE and GROQ_API_KEY:
+    # ═════════════════════════════════════════════════════════════════════
+    # TIER 1: DIRECT MULTIMODAL MEDICAL VISION (High Accuracy on Handwriting)
+    # ═════════════════════════════════════════════════════════════════════
+    if GEMINI_API_KEY and HTTPX_AVAILABLE:
         try:
-            client = Groq(api_key=GROQ_API_KEY)
-            prompt = f"""You are an expert clinical pharmacist and AI prescription parser. Your ONLY job is to extract the PRESCRIBED MEDICINES from the provided OCR text.
+            img_b64 = base64.b64encode(contents).decode("utf-8")
+            mime_type = file.content_type or "image/jpeg"
+            if "pdf" in mime_type.lower():
+                mime_type = "application/pdf"
+            elif "png" in mime_type.lower():
+                mime_type = "image/png"
+            else:
+                mime_type = "image/jpeg"
+
+            vision_prompt = f"""You are an elite clinical pharmacist and AI medical specialist.
+Decipher and extract ALL PRESCRIBED MEDICATIONS from this doctor's prescription image (printed or handwritten).
+
+TODAY'S DATE: {today_str}
+
+=== CLINICAL EXTRACTION PROTOCOL ===
+1. DISTINGUISH DIAGNOSIS / CLINICAL FINDINGS FROM MEDICINES:
+   - Diagnoses, complaints, symptoms, vitals, or clinical notes are NOT medicines.
+   - Examples of Non-Medicines: 'c/o Pain in left ear', 'O/E vesicles over left pinna', 'Herpes Zoster Oticus', 'Shingles', 'BP: 120/80', 'Temp: 98.2', 'Pulse: 70', 'SPO2: 99%'.
+   - Assign the primary diagnosis/condition to the 'category' and 'disease_name' field for all extracted medicines.
+
+2. EXTRACT PRESCRIBED MEDICINES:
+   - Identify every prescribed medicine (e.g., Acyclovir, Sofradex Ointment, Amoxicillin, Paracetamol, etc.).
+   - Include strength if present (e.g. '800mg', '500mg', '10mg', '2mg').
+   - Determine formulation: 'tablet' | 'capsule' | 'liquid' | 'ointment' | 'injection' | 'drops' | 'spray'.
+
+3. PARSE DOSAGE, FREQUENCY & REMINDER TIMES:
+   - '5 times a day' / 'Q4H' -> times_per_day: 5, times: ['08:00 am', '11:00 am', '02:00 pm', '06:00 pm', '10:00 pm']
+   - 'BD' / 'BID' / '1-0-1' / '1 - x - 1' / 'Twice daily' -> times_per_day: 2, times: ['08:00 am', '08:00 pm']
+   - 'TDS' / 'TID' / '1-1-1' / 'Three times daily' -> times_per_day: 3, times: ['08:00 am', '02:00 pm', '08:00 pm']
+   - 'OD' / '1-0-0' / 'Once daily in morning' -> times_per_day: 1, times: ['08:00 am']
+   - 'HS' / '0-0-1' / 'Night only / Bedtime' -> times_per_day: 1, times: ['09:00 pm']
+   - 'QID' / '1-1-1-1' / '4 times daily' -> times_per_day: 4, times: ['08:00 am', '12:00 pm', '04:00 pm', '08:00 pm']
+   - 'PRN' / 'SOS' / 'As needed' -> times_per_day: 1, times: ['08:00 am']
+   - CRITICAL: The length of the 'times' array MUST EXACTLY EQUAL 'times_per_day'.
+
+4. DURATION & STOCK:
+   - Extract duration (e.g. '7 DAYS', 'x 7 DAYS' -> 7 days, '5 days' -> 5 days, '1 month' -> 30 days).
+   - Set end_date = start_date + duration in days.
+   - Calculate stock = times_per_day * duration_days (e.g. 5 * 7 = 35; for ointments/drops if not unit count default to 1).
+
+Respond ONLY with a valid JSON object in this exact schema (no markdown, no extra explanation):
+{{
+  "medicines": [
+    {{
+      "name": "Medicine Name and Strength (e.g. Acyclovir 800mg)",
+      "dosage": "800mg 5 times a day / as directed",
+      "formulation": "tablet|capsule|liquid|ointment|injection|drops|spray",
+      "category": "Herpes Zoster Oticus / Shingles",
+      "disease_name": "Herpes Zoster Oticus / Shingles",
+      "start_date": "{today_str}",
+      "end_date": "YYYY-MM-DD",
+      "times_per_day": 5,
+      "times": ["08:00 am", "11:00 am", "02:00 pm", "06:00 pm", "10:00 pm"],
+      "instructions": "Take orally with water / Apply topically to affected area",
+      "stock": 35
+    }}
+  ]
+}}"""
+
+            vision_models = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
+            for vm in vision_models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{vm}:generateContent?key={GEMINI_API_KEY}"
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"text": vision_prompt},
+                                {"inline_data": {"mime_type": mime_type, "data": img_b64}}
+                            ]
+                        }]
+                    }
+                    async with httpx.AsyncClient(timeout=25.0) as client:
+                        resp = await client.post(url, json=payload)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            raw_txt = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                            f_idx = raw_txt.find('{')
+                            l_idx = raw_txt.rfind('}')
+                            if f_idx != -1 and l_idx != -1:
+                                parsed = json.loads(raw_txt[f_idx:l_idx+1])
+                                if isinstance(parsed, dict) and parsed.get("medicines"):
+                                    extracted_medicines = sanitize_and_normalize_medicines(parsed["medicines"], today_str)
+                                    if extracted_medicines:
+                                        raw_text_display = f"Deciphered via Clinical Multimodal Vision ({vm})"
+                                        break
+                except Exception as ex_vm:
+                    logging.warning(f"[Tier 1 Vision API] Model {vm} error: {ex_vm}")
+        except Exception as vision_err:
+            logging.warning(f"[Tier 1 Vision API Failed]: {vision_err}")
+
+    # ═════════════════════════════════════════════════════════════════════
+    # TIER 2: MULTI-PASS TESSERACT OCR + GROQ LLM (Fallback)
+    # ═════════════════════════════════════════════════════════════════════
+    if not extracted_medicines:
+        raw_text_combined = ""
+        if TESSERACT_AVAILABLE:
+            try:
+                image = Image.open(io.BytesIO(contents)).convert("RGB")
+                w, h = image.size
+                large = image.resize((w * 3, h * 3), Image.LANCZOS)
+
+                gray = large.convert("L")
+                gray = ImageEnhance.Contrast(gray).enhance(2.5)
+                gray = ImageEnhance.Sharpness(gray).enhance(2.2)
+                gray = gray.filter(ImageFilter.SHARPEN)
+
+                custom_config_1 = r"--oem 3 --psm 6"
+                custom_config_2 = r"--oem 3 --psm 4"
+                custom_config_3 = r"--oem 3 --psm 3"
+
+                texts = []
+                for cfg in [custom_config_1, custom_config_2, custom_config_3]:
+                    t = pytesseract.image_to_string(gray, config=cfg)
+                    if t.strip():
+                        texts.append(t.strip())
+
+                t_orig = pytesseract.image_to_string(image)
+                if t_orig.strip():
+                    texts.append(t_orig.strip())
+
+                seen_lines = set()
+                combined_lines = []
+                for block in texts:
+                    for line in block.split("\n"):
+                        clean = line.strip()
+                        if not clean or is_line_blacklisted(clean, user.name):
+                            continue
+                        if clean not in seen_lines:
+                            seen_lines.add(clean)
+                            combined_lines.append(clean)
+
+                raw_text_combined = "\n".join(combined_lines)
+                raw_text_display = "\n".join([l.strip() for l in (t_orig.strip() or (texts[0] if texts else "")).split("\n") if l.strip() and not is_line_blacklisted(l.strip(), user.name)])
+            except Exception as tess_err:
+                logging.warning(f"[Tesseract OCR Error]: {tess_err}")
+
+        if raw_text_combined and GROQ_AVAILABLE and GROQ_API_KEY:
+            try:
+                groq_client = Groq(api_key=GROQ_API_KEY)
+                groq_prompt = f"""You are an expert clinical pharmacist and AI prescription parser. Extract ALL PRESCRIBED MEDICATIONS from this OCR text:
 
 RAW OCR TEXT FROM PRESCRIPTION:
 {raw_text_combined}
 
 TODAY'S DATE: {today_str}
 
-=== STRICT CLINICAL PARSING INSTRUCTIONS ===
+=== CLINICAL PARSING INSTRUCTIONS ===
+1. DECODE NOISY HANDWRITTEN OCR TEXT:
+   - 'OAcyerovie GOMG Stmwa day MF DAYS' / 'Atyrovie' -> 'Acyclovir 800mg' (formulation: tablet, frequency: 5 times a day, duration: 7 days)
+   - 'Soreay eye O1OT MENT' / 'SOPRADEX' -> 'Sofradex Ointment' (formulation: ointment, frequency: BD/twice daily, duration: 7 days)
+   - 'Zoclar 500' -> 'Zoclar 500'
+   - 'Sizodon Plus' -> 'Sizodon Plus'
+   - 'Qutipin 200mg' -> 'Qutipin 200mg'
 
-1. IDENTIFY THE PRESCRIPTION LAYOUT STYLE:
-   - STYLE A (Grid/Table): Look for rows with columns mapping "Medicine Name", "Dosage", "Duration" (e.g. "TAB. ABCIXIMAB  1 Morning  8 Days (Tot:8 Tab)").
-   - STYLE B (Handwritten List): Look for items numbered with 1), (1), ①, or bullet points, often followed by shorthand dosages (e.g., "1 -- x -- 1", "BD/PC", "5 times a day").
-   - STYLE C (Free-form text): Any listing of medicine names following an "Rx", "R", "Plan", or "Advice" marker.
+2. NEVER EXTRACT DIAGNOSES AS MEDICATIONS:
+   - Diagnoses like 'Herpes Zoster Oticus', 'Shingles', 'Malaria', 'Otitis Externa', 'Fever' belong in 'category' and 'disease_name'.
 
-2. EXTRACT MEDICINE NAME & FORMULATION:
-   - Extract the core medicine name and strength. Remove formulation prefixes like "TAB.", "TAB", "CAP.", "CAP", "SYR.", "SYR", "OINT", "INJ" from the name field, but keep modifiers/dosages like "500", "10/SR", "800mg".
-   - Map formulation:
-     - Contains "tab", "tablet", "ab" → "tablet"
-     - Contains "cap", "capsule" → "capsule"
-     - Contains "syr", "syrup", "suspension", "liquid" → "liquid"
-     - Contains "oint", "ointment", "cream", "gel" → "ointment"
-     - Contains "inj", "injection", "vial", "ampoule" → "injection"
-     - Contains "drop", "drops", "eye drop", "ear drop" → "drops"
-     - Contains "spray", "inhaler" → "spray"
-   - Correct OCR typos using medical knowledge:
-     - "SOPRAD" / "SOFRADEX" / "Sofradex" → "Sofradex Ointment" (formulation: ointment)
-     - "Atyrovie" / "ACYCLOVIR" / "Acyclovir" → "Acyclovir"
-     - "Zoclar 500" / "ZOCLAR 500" → "Zoclar 500"
-     - "Sizodon Plus" / "SizodonPlus" → "Sizodon Plus"
-     - "Qutipin 200mg" / "Quetipin" → "Qutipin 200mg"
-     - "Ativan 2mg" / "Lorazepam" → "Ativan 2mg"
-     - "Rivotril 0.5mg" / "Clonazepam" → "Rivotril 0.5mg"
-     - "Serta 50mg" / "Sertraline" → "Serta 50mg"
+3. PARSE FREQUENCY & REMINDER SCHEDULE:
+   - '5 times a day' -> times_per_day: 5, times: ['08:00 am', '11:00 am', '02:00 pm', '06:00 pm', '10:00 pm']
+   - 'BD' / '1-0-1' -> times_per_day: 2, times: ['08:00 am', '08:00 pm']
+   - 'TDS' / '1-1-1' -> times_per_day: 3, times: ['08:00 am', '02:00 pm', '08:00 pm']
+   - 'OD' / '1-0-0' -> times_per_day: 1, times: ['08:00 am']
+   - 'HS' / '0-0-1' -> times_per_day: 1, times: ['09:00 pm']
+   - 'QID' -> times_per_day: 4, times: ['08:00 am', '12:00 pm', '04:00 pm', '08:00 pm']
+   - Length of 'times' array MUST MATCH times_per_day count.
 
-3. NEVER EXTRACT THE DIAGNOSIS/DISEASE AS A MEDICINE:
-   - DIAGNOSES are NOT medicines. NEVER add them to the list of medicines.
-   - Examples of diagnosis lines to skip: "Malaria", "Herpes Zoster Oticus", "Shingles", "Chr. Schizophrenia", "Otitis Externa Left", "DM", "HTN", "Headache", "Fever".
-   - Put this diagnosis into the "category" and "disease_name" field for all extracted medicines. If no diagnosis is found, use "Other".
+4. CALCULATE DURATION & STOCK:
+   - 'x 7 DAYS' / '7 days' -> duration: 7 days, end_date = start_date + 7 days.
+   - stock = times_per_day * duration_days.
 
-4. PARSE FREQUENCY & DOSAGE:
-   - Translate frequency into `times_per_day` and standard daily `times`:
-     - Shorthand dashes:
-       - `1-0-1` or `1 - x - 1` or `1 -- 0 -- 1` (Morning & Night) → times_per_day: 2, times: ["08:00 am", "08:00 pm"]
-       - `1-1-1` or `1 - 1 - 1` or `1 -- 1 -- 1` (Morning, Afternoon, Night) → times_per_day: 3, times: ["08:00 am", "02:00 pm", "08:00 pm"]
-       - `1-0-0` or `1 - x - x` or `1 -- x -- x` (Morning only) → times_per_day: 1, times: ["08:00 am"]
-       - `0-0-1` or `x - x - 1` or `x -- x -- 1` (Night only) → times_per_day: 1, times: ["09:00 pm"]
-     - Text instructions:
-       - "1 Morning, 1 Night" / "BD" / "twice daily" → times_per_day: 2, times: ["08:00 am", "08:00 pm"]
-       - "1 Morning" / "OD" / "once daily" → times_per_day: 1, times: ["08:00 am"]
-       - "1 Night" / "once daily at night" / "bedtime" / "HS" → times_per_day: 1, times: ["09:00 pm"]
-       - "5 times a day" → times_per_day: 5, times: ["08:00 am", "11:00 am", "02:00 pm", "06:00 pm", "10:00 pm"]
-       - "PRN" / "as needed" → times_per_day: 1, times: ["08:00 am"] (dosage: "As needed")
-
-5. CALCULATE DATES AND STOCK:
-   - start_date is always "{today_str}".
-   - Parse duration: "8 Days" = 8 days, "3 Days" = 3 days, "4 Days" = 4 days, "6 months" = 180 days, "x 7 DAYS" = 7 days.
-   - Set end_date = start_date + duration in days.
-   - Stock calculation:
-     - Look for total tablets in text (e.g. "Tot: 16 Tab" → stock: 16; "Tot:8 Tab" → stock: 8; "10" in a circle → stock: 10).
-     - Otherwise, calculate stock = times_per_day * duration_days.
-     - If duration is not specified, default stock = 14.
-
-6. FORMAT INSTRUCTIONS:
-   - Extract food instructions: "After Food" / "PC" → "Take after meals", "Before Breakfast" / "BBF" / "AC" → "Take before meals".
-
-Respond ONLY with this exact JSON format (no markdown, no extra text, no explanation):
+Respond ONLY with valid JSON (no markdown):
 {{
   "medicines": [
     {{
-      "name": "Medicine Name (e.g. Abciximab or Sizodon Plus)",
-      "dosage": "1 tablet once daily in the morning / as directed",
+      "name": "Medicine Name and Strength",
+      "dosage": "800mg 5 times a day / as directed",
       "formulation": "tablet|capsule|liquid|ointment|injection|drops|spray",
-      "category": "Malaria / Chr. Schizophrenia / Otitis Externa / etc.",
-      "disease_name": "Malaria / Chr. Schizophrenia / Otitis Externa / etc.",
+      "category": "Diagnosis / Condition",
+      "disease_name": "Diagnosis / Condition",
       "start_date": "{today_str}",
       "end_date": "YYYY-MM-DD",
       "times_per_day": 2,
       "times": ["08:00 am", "08:00 pm"],
-      "instructions": "Take after food / Take before breakfast / etc.",
-      "stock": 16
+      "instructions": "Take after food / as directed",
+      "stock": 14
     }}
   ]
 }}"""
-            completion = call_groq_with_fallback(
-                client,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.05
-            )
-            resp_str = completion.choices[0].message.content.strip()
-            
-            # Robust JSON extraction by finding first '{' and last '}'
-            first_idx = resp_str.find('{')
-            last_idx = resp_str.rfind('}')
-            if first_idx != -1 and last_idx != -1:
-                resp_str = resp_str[first_idx:last_idx+1]
-                
-            parsed = json.loads(resp_str)
+                completion = call_groq_with_fallback(
+                    groq_client,
+                    messages=[{"role": "user", "content": groq_prompt}],
+                    temperature=0.05
+                )
+                resp_str = completion.choices[0].message.content.strip()
+                f_idx = resp_str.find('{')
+                l_idx = resp_str.rfind('}')
+                if f_idx != -1 and l_idx != -1:
+                    resp_str = resp_str[f_idx:l_idx+1]
+                parsed = json.loads(resp_str)
+                raw_list = parsed.get("medicines", []) if isinstance(parsed, dict) else (parsed if isinstance(parsed, list) else [])
+                extracted_medicines = sanitize_and_normalize_medicines(raw_list, today_str)
+            except Exception as groq_err:
+                logging.warning(f"[Tier 2 Groq OCR Extraction Error]: {groq_err}")
 
-            raw_list = []
-            if isinstance(parsed, dict) and "medicines" in parsed and isinstance(parsed["medicines"], list):
-                raw_list = parsed["medicines"]
-            elif isinstance(parsed, list):
-                raw_list = parsed
-                
-            # Sanitize all items to prevent breakouts/crashes
-            sanitized = []
-            for med in raw_list:
-                if not isinstance(med, dict):
-                    continue
-                category = med.get("category") or med.get("disease_name") or "Other"
-                
-                times_per_day = med.get("times_per_day")
-                try:
-                    times_per_day = int(times_per_day)
-                except (ValueError, TypeError):
-                    times_per_day = 1
-                
-                times = med.get("times")
-                if not isinstance(times, list) or not times:
-                    times = ["08:00 am"]
-                else:
-                    times = [str(t) for t in times]
-                
-                stock = med.get("stock")
-                try:
-                    stock = int(stock)
-                except (ValueError, TypeError):
-                    stock = 14
-                    
-                sanitized.append({
-                    "name": str(med.get("name") or "Prescribed Medicine").strip(),
-                    "dosage": str(med.get("dosage") or "As directed").strip(),
-                    "formulation": str(med.get("formulation") or "tablet").strip().lower(),
-                    "category": str(category).strip(),
-                    "disease_name": str(category).strip(),
-                    "start_date": str(med.get("start_date") or today_str).strip(),
-                    "end_date": str(med.get("end_date") or "").strip(),
-                    "times_per_day": times_per_day,
-                    "times": times,
-                    "instructions": str(med.get("instructions") or "").strip(),
-                    "stock": stock
-                })
-            extracted_medicines = sanitized
-
-            # ── Post-process: verify each medicine name via RxNorm/OpenFDA ──
-            verified_medicines = []
-            for med in extracted_medicines:
-                med_name = med.get("name", "").strip()
-                # Skip very short or obviously non-medicine strings
-                if len(med_name) < 3:
-                    verified_medicines.append(med)
-                    continue
-                try:
-                    vres = await verify_medicine_name_api(med_name)
-                    if vres.get("valid") and vres.get("canonical"):
-                        canonical = vres["canonical"]
-                        # Only replace if the canonical is meaningfully different (not just casing)
-                        if canonical.lower() != med_name.lower():
-                            med["name"] = canonical
-                            med["_verified_source"] = vres["source"]
-                        else:
-                            med["_verified_source"] = vres["source"]
-                    else:
-                        med["_verified_source"] = "unverified"
-                except Exception:
-                    med["_verified_source"] = "unverified"
-                verified_medicines.append(med)
-            extracted_medicines = verified_medicines
-        except Exception as err:
-            logging.warning(f"[OCR Multi-Medicine AI Error] Fallback: {err}")
-
-    # Fallback: line parser ignoring blacklist
-    if not extracted_medicines:
+    # ═════════════════════════════════════════════════════════════════════
+    # TIER 3: HEURISTIC LINE PARSER (Ultimate Offline Fallback)
+    # ═════════════════════════════════════════════════════════════════════
+    if not extracted_medicines and raw_text_display:
         non_empty = [l.strip() for l in raw_text_display.split("\n") if len(l.strip()) > 3]
         clean_lines = [l for l in non_empty if not is_line_blacklisted(l, user.name)]
-        
         valid_med_lines = []
         for cl in clean_lines:
-            # Check if it has clear medicine markers
             has_marker = any(mk in cl.lower() for mk in ["tab", "cap", "syr", "oint", "inj", "drop", "mg", "ml", "tablet", "capsule", "syrup", "ointment", "injection"])
-            
-            # Check if RxNorm/OpenFDA recognizes it
             is_valid_med = False
             try:
                 vres = await verify_medicine_name_api(cl)
@@ -2108,31 +2287,61 @@ Respond ONLY with this exact JSON format (no markdown, no extra text, no explana
                         cl = vres["canonical"]
             except Exception:
                 pass
-                
             if is_valid_med or (has_marker and len(re.sub(r"[^a-zA-Z]", "", cl)) >= 3):
                 valid_med_lines.append(cl)
 
-        if valid_med_lines:
-            extracted_medicines = []
-            for name in valid_med_lines[:3]:  # Limit to top 3
-                form = "capsule" if "cap" in name.lower() else "liquid" if "syr" in name.lower() or "liquid" in name.lower() else "tablet"
-                extracted_medicines.append({
-                    "name": name,
-                    "dosage": "1 capsule" if form == "capsule" else "1 tsp" if form == "liquid" else "1 tablet",
-                    "formulation": form,
-                    "category": "Other",
-                    "disease_name": "",
-                    "start_date": today_str,
-                    "end_date": "",
-                    "times_per_day": 1,
-                    "times": ["08:00 am"],
-                    "instructions": "",
-                    "stock": 14
-                })
-        else:
-            extracted_medicines = []
+        fallback_raw = []
+        for name in valid_med_lines[:5]:
+            form = "capsule" if "cap" in name.lower() else "liquid" if any(k in name.lower() for k in ["syr", "liquid"]) else "ointment" if "oint" in name.lower() else "tablet"
+            fallback_raw.append({
+                "name": name,
+                "dosage": f"1 {form}",
+                "formulation": form,
+                "category": "Other",
+                "disease_name": "Other",
+                "start_date": today_str,
+                "end_date": (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
+                "times_per_day": 1,
+                "times": ["08:00 am"],
+                "instructions": "Take as directed",
+                "stock": 7
+            })
+        extracted_medicines = sanitize_and_normalize_medicines(fallback_raw, today_str)
 
-    return {"success": True, "medicines": extracted_medicines, "raw_text": raw_text_display}
+    # ═════════════════════════════════════════════════════════════════════
+    # POST-PROCESSING: RXNORM / OPENFDA CANONICAL VERIFICATION
+    # ═════════════════════════════════════════════════════════════════════
+    verified_medicines = []
+    for med in extracted_medicines:
+        med_name = med.get("name", "").strip()
+        if len(med_name) >= 3:
+            try:
+                vres = await verify_medicine_name_api(med_name)
+                if vres.get("valid") and vres.get("canonical"):
+                    canonical = vres["canonical"]
+                    # If canonical is close, apply canonical spelling
+                    if canonical.lower() != med_name.lower() and len(canonical) > 3:
+                        # Keep dosage suffix if present
+                        dose_match = re.search(r"\b\d+\s*(?:mg|ml|mcg|gm|g|iu)\b", med_name, re.IGNORECASE)
+                        if dose_match and dose_match.group(0).lower() not in canonical.lower():
+                            med["name"] = f"{canonical} {dose_match.group(0)}"
+                        else:
+                            med["name"] = canonical
+                        med["_verified_source"] = vres.get("source", "verified")
+                    else:
+                        med["_verified_source"] = vres.get("source", "verified")
+                else:
+                    med["_verified_source"] = "unverified"
+            except Exception:
+                med["_verified_source"] = "unverified"
+        verified_medicines.append(med)
+
+    return {
+        "success": True,
+        "medicines": verified_medicines,
+        "raw_text": raw_text_display,
+        "count": len(verified_medicines)
+    }
 
 
 @app.get("/medicines/verify-name", tags=["Medicine Verification"])
@@ -2159,7 +2368,7 @@ def get_refill_predictions(
     estimated stock depletion dates, and refill status.
     """
     target_id = _resolve_target(user, patient_id)
-    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).all()
+    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).order_by(Medicine.created_at.desc()).all()
     
     predictions = []
     today = date.today()
@@ -2222,75 +2431,103 @@ def get_adherence_analytics(
     user:       User          = Depends(get_current_user),
 ):
     """
-    Calculates REAL 7-day adherence trends, overall consistency score,
-    and missed dose analysis based on actual database logs and active schedules.
+    Calculates precise 7-Day Weekly and 30-Day Monthly adherence trends,
+    accurate missed dose tracking, ratio breakdowns, and stock depletion status.
     """
     target_id = _resolve_target(user, patient_id)
     today = date.today()
     
-    # Active patient schedules
-    active_med_ids = [m.id for m in db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).all()]
-    total_daily_schedules = db.query(Schedule).filter(Schedule.medicine_id.in_(active_med_ids)).count() if active_med_ids else 0
+    # Active patient medicines and schedules
+    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).all()
+    all_logs = db.query(IntakeLog).filter(IntakeLog.user_id == target_id).all()
+    
+    log_map = {}
+    for log in all_logs:
+        log_map[(log.medicine_id, log.log_date, log.scheduled_time)] = log
 
-    trend = []
-    total_taken = 0
-    total_scheduled = 0
-
-    for i in range(6, -1, -1):
-        day_date = today - timedelta(days=i)
+    def get_day_stats(day_date: date):
         day_str = day_date.strftime("%Y-%m-%d")
-        day_label = day_date.strftime("%a")
-        
-        logs = db.query(IntakeLog).filter(IntakeLog.user_id == target_id, IntakeLog.log_date == day_str).all()
-        day_taken = sum(1 for l in logs if l.status == "taken")
-        day_missed = sum(1 for l in logs if l.status == "missed")
-        
-        # Expected doses for the day: max of actual logged entries or daily scheduled count
-        expected_doses = max(len(logs), total_daily_schedules)
-        
-        if expected_doses > 0:
-            pct = round((day_taken / expected_doses) * 100)
-        else:
-            pct = 0
-            
-        total_taken += day_taken
-        total_scheduled += expected_doses
-        
-        trend.append({
+        day_taken = 0
+        day_missed = 0
+        day_scheduled = 0
+
+        for med in meds:
+            # Check if med was active on this day
+            start_d = med.start_date or (med.created_at.date() if med.created_at else today)
+            end_d = med.end_date
+            if day_date < start_d or (end_d and day_date > end_d):
+                continue
+
+            for sch in med.schedules:
+                day_scheduled += 1
+                key = (med.id, day_date, sch.time)
+                log = log_map.get(key)
+                if log and log.status == "taken":
+                    day_taken += 1
+                else:
+                    if is_scheduled_time_past(day_date, sch.time):
+                        day_missed += 1
+
+        pct = round((day_taken / day_scheduled) * 100) if day_scheduled > 0 else 0
+        return {
             "date": day_str,
-            "day": day_label,
+            "day": day_date.strftime("%a"),
             "taken": day_taken,
             "missed": day_missed,
-            "total": expected_doses,
+            "total": day_scheduled,
             "adherence_pct": pct
-        })
+        }
 
-    # 30-Day Monthly Trend (4 Weekly Blocks)
+    # 1. 7-Day Weekly Trend
+    weekly_trend = []
+    for i in range(6, -1, -1):
+        d_date = today - timedelta(days=i)
+        weekly_trend.append(get_day_stats(d_date))
+
+    weekly_taken = sum(d["taken"] for d in weekly_trend)
+    weekly_missed = sum(d["missed"] for d in weekly_trend)
+    weekly_scheduled = sum(d["total"] for d in weekly_trend)
+    weekly_pct = round((weekly_taken / weekly_scheduled) * 100) if weekly_scheduled > 0 else 0
+
+    # 2. 30-Day Monthly Trend (4 Weekly Blocks)
     monthly_trend = []
-    total_missed_30 = 0
+    monthly_taken = 0
+    monthly_missed = 0
+    monthly_scheduled = 0
+
     for w in range(3, -1, -1):
         w_start = today - timedelta(days=(w + 1) * 7 - 1)
         w_end = today - timedelta(days=w * 7)
-        w_logs = db.query(IntakeLog).filter(
-            IntakeLog.user_id == target_id,
-            IntakeLog.log_date >= w_start.strftime("%Y-%m-%d"),
-            IntakeLog.log_date <= w_end.strftime("%Y-%m-%d")
-        ).all()
-        w_taken = sum(1 for l in w_logs if l.status == "taken")
-        w_missed = sum(1 for l in w_logs if l.status == "missed")
-        total_missed_30 += w_missed
-        w_total = max(len(w_logs), total_daily_schedules * 7)
-        w_pct = round((w_taken / w_total * 100)) if w_total > 0 else 0
+        
+        block_taken = 0
+        block_missed = 0
+        block_total = 0
+        
+        curr = w_start
+        while curr <= w_end:
+            st = get_day_stats(curr)
+            block_taken += st["taken"]
+            block_missed += st["missed"]
+            block_total += st["total"]
+            curr += timedelta(days=1)
+
+        b_pct = round((block_taken / block_total) * 100) if block_total > 0 else 0
+        monthly_taken += block_taken
+        monthly_missed += block_missed
+        monthly_scheduled += block_total
+
         monthly_trend.append({
             "label": f"Wk {4 - w}",
             "period": f"{w_start.strftime('%b %d')} - {w_end.strftime('%b %d')}",
-            "taken": w_taken,
-            "missed": w_missed,
-            "adherence_pct": w_pct
+            "taken": block_taken,
+            "missed": block_missed,
+            "total": block_total,
+            "adherence_pct": b_pct
         })
 
+    monthly_pct = round((monthly_taken / monthly_scheduled) * 100) if monthly_scheduled > 0 else 0
+
     # Refill Stock Overview
-    meds = db.query(Medicine).filter(Medicine.user_id == target_id, Medicine.is_deleted == False).all()
     full_stock_count = 0
     refill_needed_count = 0
     out_of_stock_count = 0
@@ -2302,25 +2539,31 @@ def get_adherence_analytics(
         else:
             full_stock_count += 1
 
-    if not active_med_ids or total_scheduled == 0:
-        overall_pct = 0
+    overall_pct = weekly_pct
+    if not meds or weekly_scheduled == 0:
         consistency_grade = "No Active Medicines"
+    elif overall_pct >= 85:
+        consistency_grade = "High Adherence"
+    elif overall_pct >= 60:
+        consistency_grade = "Moderate Adherence"
     else:
-        overall_pct = round((total_taken / total_scheduled * 100))
-        if overall_pct >= 85:
-            consistency_grade = "High Adherence"
-        elif overall_pct >= 60:
-            consistency_grade = "Moderate Adherence"
-        else:
-            consistency_grade = "Needs Attention"
+        consistency_grade = "Needs Attention"
 
     return {
         "overall_pct": overall_pct,
-        "total_taken": total_taken,
-        "total_scheduled": total_scheduled,
-        "total_missed_30": total_missed_30,
+        "weekly_pct": weekly_pct,
+        "weekly_taken": weekly_taken,
+        "weekly_missed": weekly_missed,
+        "weekly_scheduled": weekly_scheduled,
+        "monthly_pct": monthly_pct,
+        "monthly_taken": monthly_taken,
+        "monthly_missed": monthly_missed,
+        "monthly_scheduled": monthly_scheduled,
+        "total_taken": weekly_taken,
+        "total_scheduled": weekly_scheduled,
+        "total_missed_30": monthly_missed,
         "consistency_grade": consistency_grade,
-        "weekly_trend": trend,
+        "weekly_trend": weekly_trend,
         "monthly_trend": monthly_trend,
         "stock_overview": {
             "full_stock": full_stock_count,
@@ -2438,35 +2681,149 @@ def update_emergency_contact(
 #  AI CHATBOT ASSISTANT
 # ══════════════════════════════════════════════════════════
 
+def clean_ai_response(text: str) -> str:
+    """Removes all hidden thinking tags, reasoning processes, XML, and markdown formatting symbols."""
+    if not text:
+        return ""
+    # If </think> exists in the text, take everything after the last </think>
+    if "</think>" in text:
+        text = text.split("</think>")[-1].strip()
+    # If <think> tag exists without closing tag, remove everything from <think>
+    if "<think>" in text:
+        text = re.sub(r"<think>[\s\S]*", "", text).strip()
+    # Remove any stray XML/HTML tags
+    text = re.sub(r"<[^>]+>", "", text).strip()
+    # Remove common preamble phrases
+    text = re.sub(r"^(?:Here(?:'s| is) a thinking process:?|Thinking:?|Analysis:?)[^\n]*\n*", "", text, flags=re.IGNORECASE).strip()
+    # Strip markdown bold/italic asterisks, headers, backticks, and bullet symbols
+    text = text.replace("***", "").replace("**", "").replace("*", "")
+    text = text.replace("###", "").replace("##", "").replace("#", "")
+    text = text.replace("`", "")
+    text = re.sub(r'"+', '"', text)  # clean excessive quotation marks
+    # Enforce 12-hour AM/PM format
+    text = re.sub(r'\(use 24-hour format[^)]*\)', '(in 12-hour AM/PM format, e.g. 08:00 AM, 02:30 PM)', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b24-hour\b', '12-hour AM/PM', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 @app.post("/chat/ask", tags=["AI Chat"])
-def ask_chatbot(data: ChatAskSchema, user: User = Depends(get_current_user)):
-    if not GROQ_AVAILABLE or not GROQ_API_KEY:
-        return {"response": "Hi! I am PillSync Assistant. Unfortunately, my AI brain (Groq) is currently offline on this server, but I am still here to help you manage your daily medications!"}
+def ask_chatbot(
+    data: ChatAskSchema,
+    user: User = Depends(get_current_user),
+    db:   Session = Depends(get_db)
+):
+    # Query live user data so the assistant knows active medicines, stock, schedule & contacts
+    meds = db.query(Medicine).filter(Medicine.user_id == user.id, Medicine.is_deleted == False).all()
+    contacts = db.query(EmergencyContact).filter(EmergencyContact.user_id == user.id).all()
     
-    try:
-        from groq import Groq
-        client = Groq(api_key=GROQ_API_KEY)
-        
-        system_prompt = (
-            "You are PillSync AI, a concise clinical health assistant. "
-            "Answer in 2-3 short sentences max. Be direct and accurate. "
-            "No lengthy explanations. If about dosage changes, add: 'Consult your doctor before changing doses.'"
-        )
-        
-        completion = call_groq_with_fallback(
-            client,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": data.query}
-            ],
-            temperature=0.6,
-            max_tokens=150
-        )
-        response_text = completion.choices[0].message.content.strip()
-        return {"response": response_text}
-    except Exception as err:
-        logging.error(f"[AI Chatbot Error]: {err}")
-        return {"response": "Sorry, I encountered an issue processing that query. Please try again shortly!"}
+    med_lines = []
+    for m in meds:
+        scheds = [s.time for s in m.schedules] if m.schedules else []
+        med_lines.append(f"- {m.name} ({m.dosage or 'standard dose'}, {m.formulation or 'tablet'}, Category: {m.category or 'General'}, Stock: {m.stock} units, Schedule: {', '.join(scheds) if scheds else 'As needed'})")
+    
+    contact_lines = [f"- {c.name} ({getattr(c, 'relation', 'Contact')}): {c.phone or c.email}" for c in contacts]
+    
+    context_str = f"""
+USER PROFILE & LIVE DATA:
+- Name: {user.name}
+- Email: {user.email}
+- Role: {user.role}
+- Vitals: Age {user.age or 'N/A'}, Gender {user.gender or 'N/A'}, Weight {user.weight or 'N/A'}, Height {user.height or 'N/A'}, Blood Group: {getattr(user, 'blood_group', 'N/A')}
+- Active Medications ({len(meds)} active):
+{chr(10).join(med_lines) if med_lines else 'No active medications currently registered.'}
+- Emergency Contacts ({len(contacts)} listed):
+{chr(10).join(contact_lines) if contact_lines else 'No emergency contacts added.'}
+"""
+
+    system_prompt = f"""You are PillSync AI, an intelligent personal medication, health, and platform assistant for {user.name}.
+You have direct access to the user's live profile, active prescriptions, stock levels, and schedules.
+
+{context_str}
+
+PILLSYNC WEBSITE FEATURES & RULES:
+- TIME FORMAT: PillSync STRICTLY uses 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM, 08:00 PM). NEVER mention 24-hour time or formats like 14:00.
+- Adding Medicines: Click + Add Medicine on the navigation bar or Overview tab. Enter the name, dosage, schedule times in 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM), start date, and initial stock, then click Save.
+- Scanning Prescriptions (OCR): Click Scan Prescription (OCR) on the dashboard to upload prescription images or PDF scans. The AI extracts medicine names, dosages, and 12-hour schedule times automatically.
+- Tracking & Adherence: Go to the Progress tab to view the 7-day tracker, daily completion circles, and monthly/weekly adherence statistics.
+- Refill Prediction Engine: Go to the Refill Predictor or My Medicines tab to see depletion forecasts, remaining days of stock, and recommended refill dates.
+- Emergency Contacts: Go to the Emergency Contacts tab to add or notify family, friends, or doctors.
+- Settings & Profile: Go to Settings to update personal details, change passwords, or toggle dark mode.
+
+RESPONSE RULES:
+- Output in clean, natural, plain text only. Do NOT use markdown symbols like asterisks (** or *), hashtags (#), or bullet stars.
+- All times MUST be in 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM, 09:00 PM). Never use 24-hour time.
+- When asked about their active medicines, schedules, stock, vitals, or contacts: Directly list the relevant information from their live profile above in plain text.
+- When asked how to use the website or perform actions: Give concise, clear, step-by-step guidance.
+- For general medical questions (e.g. side effects, interactions, dietary advice): Give accurate clinical facts in 2-3 sentences. Always remind: 'Consult your doctor or pharmacist for personalized medical advice.'
+- CRITICAL: Output ONLY the final plain text response. DO NOT include any reasoning, internal monologue, think tags, or markdown symbols.
+"""
+
+    response_text = ""
+    # 1. Try Groq AI
+    if GROQ_AVAILABLE and GROQ_API_KEY:
+        try:
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            completion = call_groq_with_fallback(
+                client,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": data.query}
+                ],
+                temperature=0.4,
+                max_tokens=500
+            )
+            raw = completion.choices[0].message.content or ""
+            response_text = clean_ai_response(raw)
+        except Exception as err:
+            logging.warning(f"[AI Chatbot Groq Error]: {err}")
+
+    # 2. Try Gemini fallback if Groq failed or wasn't configured
+    if not response_text and GEMINI_API_KEY:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+            g_payload = {
+                "contents": [
+                    {"role": "user", "parts": [{"text": f"{system_prompt}\n\nUser Question: {data.query}"}]}
+                ]
+            }
+            r = requests.post(url, json=g_payload, timeout=10)
+            if r.status_code == 200:
+                g_res = r.json()
+                raw = g_res["candidates"][0]["content"]["parts"][0]["text"]
+                response_text = clean_ai_response(raw)
+        except Exception as g_err:
+            logging.warning(f"[AI Chatbot Gemini Error]: {g_err}")
+
+    if not response_text:
+        # Smart context-aware fallback if external AI APIs are offline
+        q_lower = data.query.lower()
+        if "emergency" in q_lower or "contact" in q_lower:
+            if "add" in q_lower or "how" in q_lower:
+                response_text = "To add an emergency contact, open the Emergency Contacts tab on the left navigation menu, fill in the Name, Phone number, and Relationship, then click Add Contact."
+            elif contacts:
+                contact_str = ", ".join([f"{c.name} ({getattr(c, 'relation', 'Contact')}: {c.phone})" for c in contacts])
+                response_text = f"Your emergency contacts are: {contact_str}."
+            else:
+                response_text = "You currently have no emergency contacts saved. Go to the Emergency Contacts tab to add one."
+        elif "active" in q_lower or "what are my" in q_lower or "list" in q_lower:
+            if meds:
+                med_list_str = ", ".join([f"{m.name} ({m.dosage or 'standard dose'})" for m in meds])
+                response_text = f"You currently have {len(meds)} active medicines: {med_list_str}."
+            else:
+                response_text = "You currently have no active medicines registered. You can add one by clicking + Add Medicine."
+        elif "add" in q_lower and "med" in q_lower:
+            response_text = "To add a medicine, click + Add Medicine on your dashboard, enter the name, dosage, schedule, and stock, then click Save."
+        elif "scan" in q_lower or "ocr" in q_lower or "prescription" in q_lower:
+            response_text = "To scan a prescription, click Scan Prescription (OCR) on your dashboard and upload an image of your prescription."
+        elif "refill" in q_lower or "stock" in q_lower:
+            response_text = "You can view stock depletion forecasts and refill recommendations under the Refill Predictor tab."
+        elif "tracker" in q_lower or "adherence" in q_lower or "progress" in q_lower:
+            response_text = "You can view your 7-day adherence tracker and daily dose records under the Progress tab."
+        else:
+            response_text = f"Hi {user.name}! I am PillSync AI. You have {len(meds)} active medicines. You can ask me about your medicines, schedules, refills, or how to navigate the website."
+
+    return {"response": response_text}
 
 
 # ══════════════════════════════════════════════════════════

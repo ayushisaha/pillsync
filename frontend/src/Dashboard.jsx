@@ -127,9 +127,10 @@ const Bell = ({ c = "w-5 h-5" }) => (
   </svg>
 );
 const AlertIcon = ({ c = "w-5 h-5" }) => (
-  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="3" />
   </svg>
 );
 const User = ({ c = "w-5 h-5" }) => (
@@ -2037,6 +2038,10 @@ function AdherenceAnalytics({ token, patientId }) {
   if (loading || !data) return null;
 
   const currentTrend = timeframe === "weekly" ? (data.weekly_trend || []) : (data.monthly_trend || []);
+  const currentTaken = timeframe === "weekly" ? (data.weekly_taken ?? data.total_taken ?? 0) : (data.monthly_taken ?? data.total_taken ?? 0);
+  const currentMissed = timeframe === "weekly" ? (data.weekly_missed ?? 0) : (data.monthly_missed ?? data.total_missed_30 ?? 0);
+  const currentScheduled = timeframe === "weekly" ? (data.weekly_scheduled ?? data.total_scheduled ?? 0) : (data.monthly_scheduled ?? data.total_scheduled ?? 0);
+  const currentPct = timeframe === "weekly" ? (data.weekly_pct ?? data.overall_pct ?? 0) : (data.monthly_pct ?? data.overall_pct ?? 0);
 
   return (
     <div className="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm space-y-6">
@@ -2068,7 +2073,7 @@ function AdherenceAnalytics({ token, patientId }) {
             </button>
           </div>
           <span className="px-3 py-1.5 rounded-xl bg-[#D6F3F4] text-[#004346] text-xs font-extrabold uppercase">
-            Score: {data.overall_pct}% ({data.consistency_grade})
+            Score: {currentPct}% ({data.consistency_grade})
           </span>
         </div>
       </div>
@@ -2088,9 +2093,9 @@ function AdherenceAnalytics({ token, patientId }) {
         <div className="p-4 bg-gray-50/60 border border-gray-100 rounded-2xl space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-extrabold text-[#004346] uppercase">Dose Distribution Pie Chart</p>
-            <span className="text-[10px] font-bold text-gray-400">Ratio Breakdown</span>
+            <span className="text-[10px] font-bold text-gray-400">{timeframe === "weekly" ? "7-Day Breakdown" : "30-Day Breakdown"}</span>
           </div>
-          <SVGPieChart taken={data.total_taken || 0} missed={data.total_missed_30 || 0} totalScheduled={data.total_scheduled || 0} />
+          <SVGPieChart taken={currentTaken} missed={currentMissed} totalScheduled={currentScheduled} />
         </div>
       </div>
 
@@ -2123,16 +2128,16 @@ function AdherenceAnalytics({ token, patientId }) {
       {/* Metrics Breakdown Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center pt-1">
         <div className="p-3.5 bg-teal-50/60 border border-teal-100 rounded-2xl">
-          <p className="text-xl font-extrabold text-[#004346]">{data.total_taken}</p>
-          <p className="text-[10px] text-[#004346] font-bold uppercase mt-0.5">Total Doses Taken</p>
+          <p className="text-xl font-extrabold text-[#004346]">{currentTaken}</p>
+          <p className="text-[10px] text-[#004346] font-bold uppercase mt-0.5">{timeframe === "weekly" ? "Taken (7 Days)" : "Total Doses Taken"}</p>
         </div>
         <div className="p-3.5 bg-emerald-50/60 border border-emerald-100 rounded-2xl">
-          <p className="text-xl font-extrabold text-emerald-700">{data.overall_pct}%</p>
-          <p className="text-[10px] text-emerald-700 font-bold uppercase mt-0.5">Adherence Score</p>
+          <p className="text-xl font-extrabold text-emerald-700">{currentPct}%</p>
+          <p className="text-[10px] text-emerald-700 font-bold uppercase mt-0.5">{timeframe === "weekly" ? "7-Day Score" : "30-Day Score"}</p>
         </div>
         <div className="p-3.5 bg-amber-50/60 border border-amber-100 rounded-2xl">
-          <p className="text-xl font-extrabold text-amber-700">{data.total_missed_30 || 0}</p>
-          <p className="text-[10px] text-amber-700 font-bold uppercase mt-0.5">Missed Doses (30 Days)</p>
+          <p className="text-xl font-extrabold text-amber-700">{currentMissed}</p>
+          <p className="text-[10px] text-amber-700 font-bold uppercase mt-0.5">{timeframe === "weekly" ? "Missed Doses (7 Days)" : "Missed Doses (30 Days)"}</p>
         </div>
         <div className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl">
           <p className="text-xl font-extrabold text-[#508991] truncate">{data.consistency_grade}</p>
@@ -2225,8 +2230,11 @@ export default function Dashboard() {
   }, [registerPushNotifications]);
 
 
-  const [tab,        setTab]        = useState(() => localStorage.getItem("pillsync_active_tab") || "overview");
-  const [tabHistory, setTabHistory] = useState([localStorage.getItem("pillsync_active_tab") || "overview"]);
+  const [tab, setTab] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("tab") || "overview";
+  });
+  const [tabHistory, setTabHistory] = useState(["overview"]);
   const goTo = t => { setTab(t); setTabHistory(h => [...h, t]); localStorage.setItem("pillsync_active_tab", t); };
   const goBack = () => {
     if (tabHistory.length <= 1) return;
@@ -2924,12 +2932,167 @@ export default function Dashboard() {
     return days;
   };
 
-  const getDayStatusForMed = (medId, dateStr) => {
+  const isTimePastToday = (timeStr) => {
+    if (!timeStr) return false;
+    try {
+      const parts = timeStr.trim().split(" ");
+      if (parts.length !== 2) return false;
+      const [h_m, period] = parts;
+      let [h, m] = h_m.split(":").map(Number);
+      if (period.toLowerCase() === "pm" && h !== 12) h += 12;
+      if (period.toLowerCase() === "am" && h === 12) h = 0;
+      const now = new Date();
+      const sched = new Date();
+      sched.setHours(h, m, 0, 0);
+      return now > sched;
+    } catch {
+      return false;
+    }
+  };
+
+  const getDayStatusDetailForMed = (medId, dateStr) => {
+    const med = medicines.find(m => m.id === medId);
     const dayLogs = history.filter(log => log.medicine_id === medId && log.log_date === dateStr);
-    if (dayLogs.length === 0) return "pending";
-    if (dayLogs.some(log => log.status === "taken")) return "taken";
-    if (dayLogs.some(log => log.status === "missed")) return "missed";
-    return "pending";
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+
+    const schedules = (med && med.schedules && med.schedules.length > 0) ? med.schedules : ["08:00 am"];
+    const totalDoses = schedules.length;
+
+    // If medicine has a start_date, and dateStr is before start_date: it was not active yet (blank)
+    const medStart = med?.start_date || (med?.created_at ? med.created_at.split("T")[0].split(" ")[0] : null);
+    if (medStart && dateStr < medStart) {
+      return {
+        type: "not_started",
+        takenCount: 0,
+        missedCount: 0,
+        pendingCount: totalDoses,
+        totalDoses,
+        label: `Not assigned for this day (Started on ${medStart})`
+      };
+    }
+
+    // Past date (before today)
+    if (dateStr < todayStr) {
+      // If no logs exist for this past date, medicine was not assigned for this day -> Blank
+      if (dayLogs.length === 0) {
+        return {
+          type: "not_started",
+          takenCount: 0,
+          missedCount: 0,
+          pendingCount: totalDoses,
+          totalDoses,
+          label: `Not assigned for ${dateStr}`
+        };
+      }
+
+      const takenCount = dayLogs.filter(l => l.status === "taken").length;
+      const missedCount = dayLogs.filter(l => l.status === "missed").length;
+      const totalLogged = dayLogs.length;
+
+      if (takenCount === totalLogged && totalLogged > 0) {
+        return {
+          type: "taken",
+          takenCount,
+          missedCount: 0,
+          pendingCount: 0,
+          totalDoses: totalLogged,
+          label: totalLogged === 1 ? "1/1 dose taken" : `All ${totalLogged}/${totalLogged} doses taken`
+        };
+      }
+
+      if (missedCount === totalLogged && totalLogged > 0) {
+        return {
+          type: "missed",
+          takenCount: 0,
+          missedCount,
+          pendingCount: 0,
+          totalDoses: totalLogged,
+          label: totalLogged === 1 ? "0/1 dose taken (Missed)" : `0/${totalLogged} doses taken (All missed)`
+        };
+      }
+
+      const breakdown = [];
+      if (takenCount > 0) breakdown.push(`${takenCount} taken`);
+      if (missedCount > 0) breakdown.push(`${missedCount} missed`);
+
+      return {
+        type: "partial",
+        takenCount,
+        missedCount,
+        pendingCount: 0,
+        totalDoses: totalLogged,
+        label: `${takenCount}/${totalLogged} doses taken (${breakdown.join(", ")})`
+      };
+    }
+
+    // Future date (after today): upcoming blank
+    if (dateStr > todayStr) {
+      return {
+        type: "pending",
+        takenCount: 0,
+        missedCount: 0,
+        pendingCount: totalDoses,
+        totalDoses,
+        label: `${totalDoses} doses scheduled (Upcoming)`
+      };
+    }
+
+    // Today (dateStr === todayStr)
+    let takenCount = 0;
+    let missedCount = 0;
+    let pendingCount = 0;
+
+    for (const schTime of schedules) {
+      const isTaken = dayLogs.some(l => l.scheduled_time === schTime && l.status === "taken");
+      if (isTaken) {
+        takenCount++;
+      } else {
+        if (isTimePastToday(schTime)) {
+          missedCount++;
+        } else {
+          pendingCount++;
+        }
+      }
+    }
+
+    let type = "partial";
+    if (takenCount === totalDoses && totalDoses > 0) {
+      type = "taken";
+    } else if (missedCount === totalDoses && totalDoses > 0) {
+      type = "missed";
+    } else if (pendingCount === totalDoses && totalDoses > 0) {
+      type = "pending";
+    }
+
+    let label = "";
+    if (type === "taken") {
+      label = totalDoses === 1 ? "1/1 dose taken" : `All ${totalDoses}/${totalDoses} doses taken`;
+    } else if (type === "missed") {
+      label = totalDoses === 1 ? "0/1 dose taken (Missed)" : `0/${totalDoses} doses taken (All missed)`;
+    } else if (type === "pending") {
+      label = totalDoses === 1 ? `Scheduled for ${schedules[0]} (Upcoming)` : `${totalDoses} doses scheduled (Upcoming)`;
+    } else {
+      const breakdown = [];
+      if (takenCount > 0) breakdown.push(`${takenCount} taken`);
+      if (missedCount > 0) breakdown.push(`${missedCount} missed`);
+      if (pendingCount > 0) breakdown.push(`${pendingCount} upcoming`);
+      label = `${takenCount}/${totalDoses} doses taken (${breakdown.join(", ")})`;
+    }
+
+    return {
+      type,
+      takenCount,
+      missedCount,
+      pendingCount,
+      totalDoses,
+      label
+    };
+  };
+
+  const getDayStatusForMed = (medId, dateStr) => {
+    const detail = getDayStatusDetailForMed(medId, dateStr);
+    return detail.type;
   };
 
   const last7Days = getLast7Days();
@@ -3460,35 +3623,41 @@ export default function Dashboard() {
           <div className="space-y-4">
             {/* Urgent Low Stock Status Bar */}
             {medicines.filter(m => !m.is_deleted && m.stock < 10).length > 0 && (
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border-2 border-rose-200/80 shadow-sm space-y-3 animate-[fadeIn_.2s_ease]">
+              <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-rose-50/90 via-red-50/40 to-white border border-rose-200/90 shadow-sm space-y-3.5 animate-[fadeIn_.2s_ease]">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/20">
-                      <AlertIcon c="w-4.5 h-4.5"/>
+                  <div className="flex items-center gap-3.5">
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-2xl bg-rose-400 opacity-20"></span>
+                      <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-500/25 ring-4 ring-rose-100">
+                        <AlertIcon c="w-5 h-5 drop-shadow-xs" />
+                      </div>
                     </div>
                     <div>
-                      <h4 className="font-extrabold text-rose-900 text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2">
+                      <h4 className="font-extrabold text-rose-950 text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2">
                         <span>Low Stock Alert — Immediate Action Needed</span>
-                        <span className="px-2 py-0.5 rounded-full bg-rose-200 text-rose-800 text-[10px] font-extrabold">
+                        <span className="px-2 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-extrabold">
                           {medicines.filter(m => !m.is_deleted && m.stock < 10).length} Item{medicines.filter(m => !m.is_deleted && m.stock < 10).length > 1 ? "s" : ""}
                         </span>
                       </h4>
-                      <p className="text-[11px] text-rose-700/80 font-medium mt-0.5">
+                      <p className="text-[11px] text-rose-700/90 font-medium mt-0.5">
                         The following medicines are running low or out of stock. Please restore stock soon:
                       </p>
                     </div>
                   </div>
-                  <span className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white font-extrabold text-xs shadow-sm whitespace-nowrap">
+                  <span className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-white font-extrabold text-xs shadow-sm whitespace-nowrap">
+                    <AlertIcon c="w-3.5 h-3.5" />
                     Refill Needed
                   </span>
                 </div>
 
                 {/* Cleanly spaced badges */}
-                <div className="flex flex-wrap gap-2 pt-1 border-t border-rose-200/60">
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-100">
                   {medicines.filter(m => !m.is_deleted && m.stock < 10).map(med => (
-                    <div key={med.id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-rose-200 shadow-xs text-xs">
-                      <span className="font-extrabold text-gray-800">{med.name}</span>
-                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase ${med.stock === 0 ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800 border border-amber-200"}`}>
+                    <div key={med.id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-rose-200/80 shadow-xs text-xs">
+                      <span className="font-extrabold text-[#004346]">{med.name}</span>
+                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide ${
+                        med.stock === 0 ? "bg-rose-600 text-white shadow-xs" : "bg-amber-100 text-amber-800 border border-amber-200"
+                      }`}>
                         {med.stock === 0 ? "Out of Stock" : `${med.stock} left`}
                       </span>
                     </div>
@@ -3703,22 +3872,37 @@ export default function Dashboard() {
                           </div>
                           <div className="flex justify-between md:justify-end gap-2 sm:gap-3 overflow-x-auto py-1">
                             {last7Days.map(day => {
-                              const status = getDayStatusForMed(med.id, day.dateStr);
+                              const detail = getDayStatusDetailForMed(med.id, day.dateStr);
+                              const { type, takenCount, missedCount, pendingCount, totalDoses, label } = detail;
+
+                              const takenPct = (takenCount / totalDoses) * 100;
+                              const missedPct = (missedCount / totalDoses) * 100;
+                              const pendingPct = (pendingCount / totalDoses) * 100;
+                              const conicBg = `conic-gradient(#10b981 0% ${takenPct}%, #f43f5e ${takenPct}% ${takenPct + missedPct}%, #e5e7eb ${takenPct + missedPct}% 100%)`;
+
                               return (
                                 <div key={day.dateStr} className="flex flex-col items-center gap-1 shrink-0">
                                   <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{day.dayName}</span>
                                   <span className="text-[8px] font-extrabold text-gray-300">{day.dateNum}</span>
                                   <button
-                                    onClick={() => toggleHistoryStatus({ medicine_id: med.id, log_date: day.dateStr, scheduled_time: med.schedules?.[0] || "", status, medicine_name: med.name })}
-                                    title={`${med.name} on ${day.dateStr}: ${status}`}
-                                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                                      status === "taken" ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" :
-                                      status === "missed" ? "bg-rose-500 text-white shadow-md shadow-rose-500/20" :
-                                      "border-2 border-dashed border-gray-200 bg-gray-50 text-gray-300 hover:bg-gray-100"
+                                    type="button"
+                                    onClick={() => {
+                                      showToast(`${med.name} (${day.dateStr}): ${label}`);
+                                    }}
+                                    title={`${med.name} on ${day.dateStr}: ${label}`}
+                                    style={type === "partial" ? { background: conicBg } : undefined}
+                                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer select-none ${
+                                      type === "taken" ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" :
+                                      type === "missed" ? "bg-rose-500 text-white shadow-md shadow-rose-500/20" :
+                                      type === "not_started" || type === "pending" ? "border-2 border-dashed border-gray-200 bg-gray-50 text-gray-300 hover:bg-gray-100" :
+                                      "p-0.5 shadow-sm"
                                     }`}>
-                                    {status === "taken" ? <Check c="w-4 h-4" /> :
-                                     status === "missed" ? <X c="w-4 h-4" /> :
-                                     <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
+                                    {type === "taken" ? <Check c="w-4 h-4" /> :
+                                     type === "missed" ? <X c="w-4 h-4" /> :
+                                     type === "not_started" || type === "pending" ? <span className="w-1.5 h-1.5 rounded-full bg-gray-300" /> :
+                                     <span className="w-5 h-5 rounded-full bg-white text-[9px] font-black text-gray-800 flex items-center justify-center shadow-xs">
+                                       {takenCount}/{totalDoses}
+                                     </span>}
                                   </button>
                                 </div>
                               );

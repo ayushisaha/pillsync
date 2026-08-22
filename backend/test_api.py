@@ -142,3 +142,59 @@ def test_refill_predictions_and_adherence():
 
     adh_res = client.get("/analytics/adherence-reports?date_str=2026-08-16", headers=headers)
     assert adh_res.status_code == 200
+
+def test_prescription_ocr():
+    uid = uuid.uuid4().hex[:6]
+    email = f"ocr_{uid}@example.com"
+    reg_res = client.post("/auth/register", json={
+        "name": f"OCR User {uid}",
+        "email": email,
+        "password": "Pass123!",
+        "role": "patient"
+    })
+    assert reg_res.status_code == 200
+    token = reg_res.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import io
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (300, 100), color=(255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.text((10, 10), "Tab Paracetamol 500mg 1-0-1 x 5 days", fill=(0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+
+    files = {"file": ("prescription.jpg", buf.getvalue(), "image/jpeg")}
+    ocr_res = client.post("/medicines/upload-ocr", files=files, headers=headers)
+    assert ocr_res.status_code == 200
+    assert ocr_res.json().get("success") is True
+    assert "medicines" in ocr_res.json()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_users():
+    """Runs after all tests complete to remove any test users created during test execution."""
+    yield
+    from database import SessionLocal
+    from main import User, Medicine, Schedule, IntakeLog, EmergencyContact, PushSubscription, VerificationCode, WaterIntake
+    db = SessionLocal()
+    try:
+        test_users = db.query(User).filter(User.email.like("%@example.com")).all()
+        test_user_ids = [u.id for u in test_users]
+        if test_user_ids:
+            med_ids = [m.id for m in db.query(Medicine).filter(Medicine.user_id.in_(test_user_ids)).all()]
+            if med_ids:
+                db.query(Schedule).filter(Schedule.medicine_id.in_(med_ids)).delete(synchronize_session=False)
+                db.query(IntakeLog).filter(IntakeLog.medicine_id.in_(med_ids)).delete(synchronize_session=False)
+                db.query(Medicine).filter(Medicine.id.in_(med_ids)).delete(synchronize_session=False)
+            db.query(IntakeLog).filter(IntakeLog.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+            db.query(EmergencyContact).filter(EmergencyContact.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+            db.query(PushSubscription).filter(PushSubscription.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+            db.query(WaterIntake).filter(WaterIntake.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+            db.query(VerificationCode).filter(VerificationCode.email.like("%@example.com")).delete(synchronize_session=False)
+            db.query(User).filter(User.id.in_(test_user_ids)).delete(synchronize_session=False)
+            db.commit()
+    finally:
+        db.close()
+
