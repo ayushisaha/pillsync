@@ -299,16 +299,16 @@ export default function Auth({ mode }) {
   return (
     <div className="h-screen flex overflow-hidden bg-gradient-to-br from-[#D6F3F4] via-[#C8D9E6] to-[#D6F3F4] text-[#172A3A] selection:bg-[#508991]/30">
       {/* Left Panel - Hidden on Mobile */}
-      <div className="left-panel w-[42%] bg-[#004346] relative overflow-hidden flex flex-col justify-between p-12 text-white h-screen">
+      <div className="left-panel hidden md:flex md:w-[40%] lg:w-[42%] bg-[#004346] relative overflow-hidden flex-col justify-between p-8 lg:p-10 text-white h-screen shrink-0">
         {/* Background decorative blobs */}
-        <div className="absolute top-[-80px] right-[-80px] w-[300px] h-[300px] rounded-full bg-[#508991] opacity-20 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-[-100px] left-[-100px] w-[350px] h-[350px] rounded-full bg-[#74B3CE] opacity-15 blur-3xl pointer-events-none" />
+        <div className="absolute top-[-80px] right-[-80px] w-[260px] h-[260px] rounded-full bg-[#508991] opacity-20 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-[-100px] left-[-100px] w-[300px] h-[300px] rounded-full bg-[#74B3CE] opacity-15 blur-3xl pointer-events-none" />
 
-        {/* Logo, Hero and Feature Cards - stacked with clean gaps to prevent any overlap */}
-        <div className="relative z-10 flex flex-col gap-8 my-auto w-full">
+        {/* Logo, Hero and Feature Cards */}
+        <div className="relative z-10 flex flex-col gap-6 my-auto w-full">
           {/* Header Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#74B3CE] text-[#004346] rounded-xl flex items-center justify-center shadow-md">
+            <div className="w-9 h-9 bg-[#74B3CE] text-[#004346] rounded-xl flex items-center justify-center shadow-md">
               <PillIcon className="w-5 h-5" />
             </div>
             <span className="font-extrabold text-2xl tracking-tight text-[#D6F3F4]">PillSync</span>
@@ -316,19 +316,19 @@ export default function Auth({ mode }) {
 
           {/* Hero Section */}
           <div className="max-w-sm animate-float">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#508991]/30 border border-[#74B3CE]/30 text-[#D6F3F4] text-xs font-semibold uppercase tracking-wider mb-4 w-fit">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#508991]/30 border border-[#74B3CE]/30 text-[#D6F3F4] text-[11px] font-semibold uppercase tracking-wider mb-2.5 w-fit">
               Intelligent Healthcare
             </div>
-            <h1 className="text-3xl font-extrabold leading-tight text-white mb-3">
+            <h1 className="text-2xl lg:text-3xl font-extrabold leading-tight text-white mb-2">
               Smart medicine tracking, made effortless.
             </h1>
-            <p className="text-sm text-[#D6F3F4]/80 leading-relaxed">
+            <p className="text-xs lg:text-sm text-[#D6F3F4]/80 leading-relaxed">
               Never miss a dose again. Connect patients, caregivers, and medicine schedules under one secure, AI-powered assistant.
             </p>
           </div>
 
           {/* Feature Cards */}
-          <div className="w-full space-y-3">
+          <div className="w-full space-y-2.5">
             {[
               { icon: <BellIcon />, title: "Smart Reminders", desc: "Automated alerts for patient dosages" },
               { icon: <DocumentIcon />, title: "Prescription OCR", desc: "Instantly scan and log prescriptions" },
@@ -336,14 +336,14 @@ export default function Auth({ mode }) {
             ].map((item, i) => (
               <div
                 key={i}
-                className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-[#74B3CE]/30 transition-all duration-300 group"
+                className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-[#74B3CE]/30 transition-all duration-300 group"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#508991]/30 text-[#D6F3F4] flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#508991]/30 text-[#D6F3F4] flex items-center justify-center group-hover:scale-105 transition-transform duration-300 shrink-0">
                   {item.icon}
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-white">{item.title}</h4>
-                  <p className="text-xs text-[#D6F3F4]/65">{item.desc}</p>
+                  <h4 className="font-bold text-xs lg:text-sm text-white">{item.title}</h4>
+                  <p className="text-[11px] text-[#D6F3F4]/65">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -351,18 +351,18 @@ export default function Auth({ mode }) {
         </div>
 
         {/* Footer */}
-        <div className="relative z-10 text-xs text-[#D6F3F4]/40 pt-4 border-t border-white/10 shrink-0">
+        <div className="relative z-10 text-xs text-[#D6F3F4]/40 pt-3 border-t border-white/10 shrink-0">
           <span>© 2026 PillSync Inc.</span>
         </div>
       </div>
 
       {/* Right Panel - Login/Register/Forgot Card */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 md:p-16 overflow-y-auto h-screen">
-        <div className="w-full max-w-[460px] my-auto py-8">
-          <div className="glass-panel p-8 sm:p-10 rounded-[32px] shadow-2xl shadow-[#004346]/8 border border-white/70 animate-scale-up">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8 overflow-y-auto h-screen">
+        <div className="w-full max-w-[430px] my-auto">
+          <div className="glass-panel p-5 sm:p-7 rounded-[26px] shadow-xl shadow-[#004346]/8 border border-white/70 animate-scale-up">
             {/* Login Role Switcher Tabs */}
             {isLogin && (
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-2xl mb-6 font-extrabold text-[11px] sm:text-xs">
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-3.5 font-extrabold text-[11px] sm:text-xs">
                 {["patient", "caregiver", "admin"].map((r) => (
                   <button
                     key={r}
@@ -373,9 +373,9 @@ export default function Auth({ mode }) {
                       setSuccess("");
                       navigate(`/login?role=${r}`, { replace: true });
                     }}
-                    className={`flex-1 py-2 sm:py-2.5 rounded-xl capitalize transition-all cursor-pointer ${
+                    className={`flex-1 py-1.5 sm:py-2 rounded-lg capitalize transition-all cursor-pointer ${
                       loginRole === r
-                        ? "bg-[#004346] text-white shadow-sm"
+                        ? "bg-[#004346] text-white shadow-xs"
                         : "text-gray-500 hover:text-[#004346]"
                     }`}
                   >
@@ -386,25 +386,25 @@ export default function Auth({ mode }) {
             )}
 
             {/* Header info */}
-            <div className="mb-6">
-              <div className="text-xs font-semibold text-[#508991] uppercase tracking-widest mb-1.5">
+            <div className="mb-3.5">
+              <div className="text-[10px] font-semibold text-[#508991] uppercase tracking-widest mb-1">
                 {isForgot ? "Password Recovery" : isLogin ? `${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)} Portal` : "Get started"}
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#004346]">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-[#004346]">
                 {isForgot ? "Reset password" : isLogin ? `Sign in as ${loginRole.charAt(0).toUpperCase() + loginRole.slice(1)}` : "Create account"}
               </h2>
-              <p className="text-xs sm:text-sm text-[#508991] mt-2">
+              <p className="text-xs text-[#508991] mt-1">
                 {isForgot 
                   ? "Enter your email and choose a new password" 
                   : isLogin 
                   ? `Access your personalized ${loginRole} dashboard` 
-                  : "Register to start managing medicines and tracking schedules"}
+                  : "Register to start managing medicines and schedules"}
               </p>
             </div>
 
             {/* Success & Error Banners */}
             {success && (
-              <div className="flex items-center gap-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
+              <div className="flex items-center gap-2.5 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-3 rounded-xl text-xs mb-3 animate-fade-in shadow-xs">
                 <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -413,7 +413,7 @@ export default function Auth({ mode }) {
             )}
             
             {error && (
-              <div className="flex items-center gap-3 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl text-sm mb-6 animate-fade-in shadow-sm">
+              <div className="flex items-center gap-2.5 bg-red-50 border-l-4 border-red-500 text-red-700 p-3 rounded-xl text-xs mb-3 animate-fade-in shadow-xs">
                 <svg className="w-4 h-4 text-red-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                   <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -421,41 +421,13 @@ export default function Auth({ mode }) {
               </div>
             )}
 
-            {/* Google One-Click Login/Register */}
-            {!isForgot && (
-              <div className="space-y-4 mb-5">
-                <button
-                  type="button"
-                  onClick={initGoogleSignIn}
-                  disabled={googleLoading}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-gray-50/90 text-gray-700 font-bold text-sm border-2 border-gray-100 hover:border-gray-200 shadow-sm active:scale-[0.99] transition-all flex items-center justify-center gap-3 cursor-pointer"
-                >
-                  {googleLoading ? (
-                    <svg className="animate-spin h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                  ) : (
-                    <GoogleIcon className="w-5 h-5 shrink-0" />
-                  )}
-                  <span>{isLogin ? "Continue with Google" : "Sign up with Google"}</span>
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-gray-200/80" />
-                  <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">or with email</span>
-                  <div className="flex-1 h-px bg-gray-200/80" />
-                </div>
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={submit} className="space-y-4">
+            {/* UPPER: Sign In with Email Form */}
+            <form onSubmit={submit} className="space-y-3">
               {!isLogin && !isForgot && (
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 gap-3">
                   {/* Full Name */}
                   <div>
-                    <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                    <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                       Full Name
                     </label>
                     <input 
@@ -465,20 +437,20 @@ export default function Auth({ mode }) {
                       value={form.name}
                       onChange={handle} 
                       required
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
+                      className="w-full px-3.5 py-2.5 rounded-xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-xs sm:text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
                     />
                   </div>
 
                   {/* Phone */}
                   <div>
-                    <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                    <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                       Phone Number (optional)
                     </label>
-                    <div className="flex rounded-2xl border-2 border-gray-100 focus-within:border-[#2D5B53] bg-white/70 backdrop-blur-sm overflow-hidden transition-all">
+                    <div className="flex rounded-xl border-2 border-gray-100 focus-within:border-[#2D5B53] bg-white/70 backdrop-blur-sm overflow-hidden transition-all">
                       <select 
                         value={countryCode} 
                         onChange={e => setCountryCode(e.target.value)} 
-                        className="px-3 text-sm font-semibold text-[#0C3C34] bg-transparent outline-none border-r border-gray-100 cursor-pointer"
+                        className="px-2.5 text-xs font-semibold text-[#0C3C34] bg-transparent outline-none border-r border-gray-100 cursor-pointer"
                       >
                         <option value="+91">+91</option>
                         <option value="+1">+1</option>
@@ -494,14 +466,14 @@ export default function Auth({ mode }) {
                         value={phoneNum}
                         onChange={e => setPhoneNum(e.target.value.replace(/\D/g, "").slice(0, 10))} 
                         maxLength={10}
-                        className="flex-1 px-4 py-3 outline-none text-sm bg-transparent placeholder:text-gray-400 font-semibold border-none focus:ring-0"
+                        className="flex-1 px-3 py-2.5 outline-none text-xs sm:text-sm bg-transparent placeholder:text-gray-400 font-semibold border-none focus:ring-0"
                       />
                     </div>
                   </div>
 
                   {/* Role Select */}
                   <div>
-                    <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                    <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                       Register as
                     </label>
                     <div className="relative">
@@ -509,27 +481,27 @@ export default function Auth({ mode }) {
                         name="role" 
                         value={form.role}
                         onChange={handle}
-                        className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all font-bold appearance-none cursor-pointer text-[#0C3C34]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-xs sm:text-sm bg-white/70 backdrop-blur-sm transition-all font-bold appearance-none cursor-pointer text-[#0C3C34]"
                       >
                         <option value="patient">Patient (Manage medicines)</option>
                         <option value="caregiver">Caregiver (Monitor patients)</option>
                         <option value="admin">Admin (Manage settings)</option>
                       </select>
-                      <span className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-[#2D5B53]">▼</span>
+                      <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-[#2D5B53] text-xs">▼</span>
                     </div>
                   </div>
 
                   {/* Patient Specific Fields: Gender, Age, Weight, Height */}
                   {form.role === "patient" && (
-                    <div className="p-4 rounded-2xl bg-[#E6EDE8]/45 border border-[#2D5B53]/15 space-y-3 animate-fade-in">
-                      <p className="text-xs font-extrabold text-[#0C3C34] uppercase tracking-wider border-b border-[#2D5B53]/10 pb-1.5">
+                    <div className="p-3 rounded-xl bg-[#E6EDE8]/45 border border-[#2D5B53]/15 space-y-2 animate-fade-in">
+                      <p className="text-[10px] font-extrabold text-[#0C3C34] uppercase tracking-wider border-b border-[#2D5B53]/10 pb-1">
                         Patient Vitals (Optional)
                       </p>
                       
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2.5">
                         {/* Gender */}
                         <div>
-                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
+                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-0.5 ml-1">
                             Gender
                           </label>
                           <div className="relative">
@@ -537,62 +509,62 @@ export default function Auth({ mode }) {
                               name="gender" 
                               value={form.gender}
                               onChange={handle}
-                              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold cursor-pointer appearance-none text-[#0C3C34]"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold cursor-pointer appearance-none text-[#0C3C34]"
                             >
                               <option value="">Select Gender</option>
                               <option value="male">Male</option>
                               <option value="female">Female</option>
                               <option value="other">Other</option>
                             </select>
-                            <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-[#2D5B53] text-[9px]">▼</span>
+                            <span className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-[#2D5B53] text-[9px]">▼</span>
                           </div>
                         </div>
 
                         {/* Age */}
                         <div>
-                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
+                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-0.5 ml-1">
                             Age (years)
                           </label>
                           <input 
                             name="age" 
-                            type="number"
-                            placeholder="60"
+                            type="number" 
+                            placeholder="60" 
                             min="0"
                             value={form.age}
                             onChange={handle}
-                            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
                           />
                         </div>
 
                         {/* Weight */}
                         <div>
-                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
+                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-0.5 ml-1">
                             Weight (kg)
                           </label>
                           <input 
                             name="weight" 
                             type="number" 
-                            placeholder="70"
+                            placeholder="70" 
                             min="0"
                             value={form.weight}
                             onChange={handle}
-                            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
                           />
                         </div>
 
                         {/* Height */}
                         <div>
-                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
+                          <label className="block text-[10px] font-bold text-[#0C3C34] uppercase tracking-wider mb-0.5 ml-1">
                             Height (cm)
                           </label>
                           <input 
                             name="height" 
                             type="number" 
-                            placeholder="170"
+                            placeholder="170" 
                             min="0"
                             value={form.height}
                             onChange={handle}
-                            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 focus:border-[#2D5B53] outline-none text-xs bg-white font-bold"
                           />
                         </div>
                       </div>
@@ -603,7 +575,7 @@ export default function Auth({ mode }) {
 
               {/* Email */}
               <div>
-                <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                   Email Address
                 </label>
                 <input 
@@ -613,16 +585,16 @@ export default function Auth({ mode }) {
                   value={form.email}
                   onChange={handle}
                   autoComplete="off"
-                  className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
+                  className={`w-full px-3.5 py-2.5 rounded-xl border-2 outline-none text-xs sm:text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     emailError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
                 />
-                {emailError && <p className="text-red-500 text-xs mt-1 ml-1 font-semibold">{emailError}</p>}
+                {emailError && <p className="text-red-500 text-[11px] mt-0.5 ml-1 font-semibold">{emailError}</p>}
               </div>
 
               {/* Password */}
               <div>
-                <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                   {isForgot ? "New Password" : "Password"}
                 </label>
                 <input 
@@ -632,17 +604,17 @@ export default function Auth({ mode }) {
                   value={form.password}
                   onChange={handle}
                   autoComplete="new-password"
-                  className={`w-full px-4 py-3 rounded-2xl border-2 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
+                  className={`w-full px-3.5 py-2.5 rounded-xl border-2 outline-none text-xs sm:text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold ${
                     passwordError ? 'border-red-300 focus:border-red-400' : 'border-gray-100 focus:border-[#2D5B53]'
                   }`}
                 />
-                {passwordError && <p className="text-red-500 text-xs mt-1 ml-1 font-semibold">{passwordError}</p>}
+                {passwordError && <p className="text-red-500 text-[11px] mt-0.5 ml-1 font-semibold">{passwordError}</p>}
               </div>
 
               {/* Confirm Password (only on Forgot Password screen) */}
               {isForgot && (
                 <div>
-                  <label className="block text-xs font-bold text-[#0C3C34] uppercase tracking-wider mb-1.5 ml-1">
+                  <label className="block text-[11px] font-bold text-[#0C3C34] uppercase tracking-wider mb-1 ml-1">
                     Confirm New Password
                   </label>
                   <input 
@@ -652,19 +624,19 @@ export default function Auth({ mode }) {
                     value={form.confirmPassword}
                     onChange={handle}
                     autoComplete="new-password"
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-gray-100 focus:border-[#2D5B53] focus:ring-0 outline-none text-xs sm:text-sm bg-white/70 backdrop-blur-sm transition-all placeholder:text-gray-400 font-semibold"
                   />
                 </div>
               )}
 
               {/* Remember/Forgot Helpers */}
               {isLogin && (
-                <div className="flex items-center justify-between text-xs font-semibold px-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-[#004346]/80">
+                <div className="flex items-center justify-between text-xs font-semibold px-1 pt-0.5">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[#004346]/80 text-[11px]">
                     <input type="checkbox" className="rounded text-[#508991] focus:ring-0 border-gray-300 bg-white" />
                     <span>Keep me signed in</span>
                   </label>
-                  <Link to="/forgot" className="text-[#508991] hover:text-[#004346] hover:underline font-bold transition-all">
+                  <Link to="/forgot" className="text-[#508991] hover:text-[#004346] hover:underline font-bold text-[11px] transition-all">
                     Forgot password?
                   </Link>
                 </div>
@@ -674,15 +646,15 @@ export default function Auth({ mode }) {
               <button 
                 type="submit" 
                 disabled={loading}
-                className={`w-full py-3.5 px-4 rounded-2xl text-white font-bold text-sm tracking-wide shadow-lg shadow-[#004346]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
+                className={`w-full py-2.5 px-4 rounded-xl text-white font-bold text-xs sm:text-sm tracking-wide shadow-md shadow-[#004346]/15 active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
                   loading 
                     ? "bg-[#508991] cursor-not-allowed" 
-                    : "bg-[#004346] hover:bg-[#508991] hover:shadow-xl cursor-pointer"
+                    : "bg-[#004346] hover:bg-[#508991] hover:shadow-lg cursor-pointer"
                 }`}
               >
                 {loading ? (
                   <>
-                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
@@ -694,8 +666,36 @@ export default function Auth({ mode }) {
               </button>
             </form>
 
+            {/* LOWER: Divider & Google One-Click Login/Register */}
+            {!isForgot && (
+              <div className="space-y-3 mt-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gray-200/80" />
+                  <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">or continue with</span>
+                  <div className="flex-1 h-px bg-gray-200/80" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={initGoogleSignIn}
+                  disabled={googleLoading}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-gray-50/90 text-gray-700 font-bold text-xs sm:text-sm border-2 border-gray-100 hover:border-gray-200 shadow-xs active:scale-[0.99] transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  {googleLoading ? (
+                    <svg className="animate-spin h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <GoogleIcon className="w-4 h-4 shrink-0" />
+                  )}
+                  <span>{isLogin ? "Continue with Google" : "Sign up with Google"}</span>
+                </button>
+              </div>
+            )}
+
             {/* Toggle Mode Footer */}
-            <div className="mt-6 text-center text-sm font-semibold text-gray-500">
+            <div className="mt-3.5 text-center text-xs font-semibold text-gray-500">
               {isForgot ? (
                 <Link 
                   to="/login" 

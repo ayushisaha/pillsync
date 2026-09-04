@@ -13,6 +13,15 @@ const fmtDate = (d) => {
 };
 const todayStr = () => fmtDate(new Date());
 
+const getInitials = (name) => {
+  if (!name || typeof name !== "string") return "PS";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+};
+
 const parsePhone = (fullPhone) => {
   if (!fullPhone) return { code: "+91", num: "" };
   const match = String(fullPhone).match(/^(\+\d{1,4})(\d{10})$/);
@@ -300,6 +309,7 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [prediction, setPrediction] = useState(null);
+  const [nameStatus, setNameStatus] = useState({ state: "idle", valid: false, canonical: null, suggestions: [] });
 
   const addTime = t => {
     if (times.length >= frequency) {
@@ -316,9 +326,40 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
     if (times.length > n) setTimes(prev => prev.slice(0, n));
   };
 
-
-
-
+  // Real-time debounced medicine name verification
+  useEffect(() => {
+    const trimmed = form.name.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setNameStatus({ state: "idle", valid: false, canonical: null, suggestions: [] });
+      return;
+    }
+    setNameStatus(s => ({ ...s, state: "checking" }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await axios.get(`${API}/medicines/verify-name?name=${encodeURIComponent(trimmed)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data.valid) {
+          setNameStatus({
+            state: "valid",
+            valid: true,
+            canonical: res.data.canonical,
+            suggestions: res.data.suggestions || []
+          });
+        } else {
+          setNameStatus({
+            state: "invalid",
+            valid: false,
+            canonical: null,
+            suggestions: res.data.suggestions || []
+          });
+        }
+      } catch {
+        setNameStatus({ state: "invalid", valid: false, canonical: null, suggestions: [] });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.name, token]);
 
   // Refill estimate: how many days the current stock will last
   const refillEstimate = () => {
@@ -332,7 +373,6 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
     const unit = ["liquid","lotion"].includes(form.formulation) ? "ml" : form.formulation === "spray" ? "sprays" : form.formulation === "injection" ? "doses" : "tablet(s)";
     return `${daysLeft} day(s) supply — ${dosesPerDay}x daily x ${doseSize} ${unit}/dose`;
   };
-
 
   const fetchPrediction = async (diseaseName) => {
     if (!diseaseName || diseaseName.trim().length < 3) { setPrediction(null); return; }
@@ -375,6 +415,10 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
   const handleSubmit = async e => {
     e.preventDefault();
     if (!form.name.trim()) { setError("Medicine name is required"); return; }
+    if (!nameStatus.valid) {
+      setError(`"${form.name}" is not recognized as a valid medicine. Only verified medications can be added.`);
+      return;
+    }
     if (times.length !== frequency) { setError(`Please add exactly ${frequency} reminder time(s) to match ${frequency}x daily dose.`); return; }
     if (form.category === "Other" && !otherDisease.trim()) { setError("Please specify the condition/disease"); return; }
     setLoading(true);
@@ -425,8 +469,62 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div><label className="label">Medicine Name *</label>
-            <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="input" placeholder="e.g. Metformin 500mg" required /></div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label mb-0">Medicine Name *</label>
+              {nameStatus.state === "checking" && (
+                <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                  <svg className="animate-spin w-3 h-3 text-[#508991]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                  Checking drug database...
+                </span>
+              )}
+              {nameStatus.state === "valid" && (
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-extrabold border border-emerald-200 flex items-center gap-1">
+                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  Verified Medicine
+                </span>
+              )}
+              {nameStatus.state === "invalid" && (
+                <span className="text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full font-extrabold border border-rose-200 flex items-center gap-1">
+                  <svg className="w-3 h-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                  Unrecognized Medicine Name
+                </span>
+              )}
+            </div>
+            <input 
+              value={form.name} 
+              onChange={e=>setForm({...form,name:e.target.value})} 
+              className={`input transition-all ${
+                nameStatus.state === "invalid" 
+                  ? "border-rose-300 focus:border-rose-500 bg-rose-50/20" 
+                  : nameStatus.state === "valid" 
+                  ? "border-emerald-300 focus:border-emerald-500 bg-emerald-50/10" 
+                  : ""
+              }`} 
+              placeholder="e.g. Metformin 500mg, Pan 40, Dolo 650" 
+              required 
+            />
+            {nameStatus.state === "invalid" && form.name.trim().length >= 2 && (
+              <p className="text-[11px] text-rose-600 font-semibold mt-1 ml-1">
+                This name was not found in the pharmaceutical drug database. Only authentic medicines can be added.
+              </p>
+            )}
+            {nameStatus.suggestions && nameStatus.suggestions.length > 0 && nameStatus.suggestions[0]?.toLowerCase() !== form.name.trim().toLowerCase() && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Suggestions:</span>
+                {nameStatus.suggestions.slice(0, 4).map((sug, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, name: sug }))}
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-[#D6F3F4] text-[#004346] hover:bg-[#74B3CE]/40 font-bold transition-all border border-[#508991]/20 cursor-pointer"
+                  >
+                    {sug}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div><label className="label">Instructions / Notes</label>
             <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="input" placeholder="e.g. Take with food" /></div>
           <div>
@@ -494,9 +592,16 @@ function AddMedicineModal({ onClose, onSave, token, patientId }) {
               <span>Stock will last approx. <strong>{refillEstimate()}</strong></span>
             </div>
           )}
-          <button type="submit" disabled={loading}
-            className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-all ${loading?"bg-[#508991]":"bg-[#004346] hover:bg-[#508991]"}`}>
-            {loading ? "Adding..." : "Add Medicine"}
+          <button 
+            type="submit" 
+            disabled={loading || nameStatus.state === "invalid" || nameStatus.state === "checking" || !form.name.trim()}
+            className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+              loading || nameStatus.state === "invalid" || nameStatus.state === "checking" || !form.name.trim()
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none" 
+                : "bg-[#004346] hover:bg-[#508991] shadow-lg shadow-[#004346]/15 cursor-pointer"
+            }`}
+          >
+            {loading ? "Adding..." : nameStatus.state === "checking" ? "Checking Medicine..." : nameStatus.state === "invalid" ? "Enter Valid Medicine" : "Add Medicine"}
           </button>
         </form>
       </div>
@@ -516,6 +621,7 @@ function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
   const [frequency, setFrequency] = useState(medicine.schedules?.length || 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [nameStatus, setNameStatus] = useState({ state: "valid", valid: true, canonical: medicine.name, suggestions: [] });
 
   const addTime = t => {
     if (times.length >= frequency) {
@@ -532,10 +638,52 @@ function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
     if (times.length > n) setTimes(prev => prev.slice(0, n));
   };
 
+  // Real-time debounced medicine name verification
+  useEffect(() => {
+    const trimmed = form.name.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setNameStatus({ state: "idle", valid: false, canonical: null, suggestions: [] });
+      return;
+    }
+    if (trimmed.toLowerCase() === (medicine.name || "").trim().toLowerCase()) {
+      setNameStatus({ state: "valid", valid: true, canonical: trimmed, suggestions: [] });
+      return;
+    }
+    setNameStatus(s => ({ ...s, state: "checking" }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await axios.get(`${API}/medicines/verify-name?name=${encodeURIComponent(trimmed)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data.valid) {
+          setNameStatus({
+            state: "valid",
+            valid: true,
+            canonical: res.data.canonical,
+            suggestions: res.data.suggestions || []
+          });
+        } else {
+          setNameStatus({
+            state: "invalid",
+            valid: false,
+            canonical: null,
+            suggestions: res.data.suggestions || []
+          });
+        }
+      } catch {
+        setNameStatus({ state: "invalid", valid: false, canonical: null, suggestions: [] });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.name, medicine.name, token]);
 
   const handleSubmit = async e => {
     e.preventDefault();
     if (!form.name.trim()) { setError("Medicine name is required"); return; }
+    if (!nameStatus.valid) {
+      setError(`"${form.name}" is not recognized as a valid medicine. Only verified medications can be saved.`);
+      return;
+    }
     if (times.length !== frequency) { setError(`Please add exactly ${frequency} reminder time(s) to match ${frequency}x daily dose.`); return; }
     setLoading(true);
     try {
@@ -570,8 +718,61 @@ function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
         <p className="text-xs text-gray-400 mb-5">Update dosage, schedule or stock details.</p>
         {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-2xl text-red-700 text-xs font-semibold flex items-center gap-2"><AlertIcon c="w-4 h-4"/>{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div><label className="label">Medicine Name *</label>
-            <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="input" required/></div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label mb-0">Medicine Name *</label>
+              {nameStatus.state === "checking" && (
+                <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                  <svg className="animate-spin w-3 h-3 text-[#508991]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                  Checking drug database...
+                </span>
+              )}
+              {nameStatus.state === "valid" && (
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-extrabold border border-emerald-200 flex items-center gap-1">
+                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  Verified Medicine
+                </span>
+              )}
+              {nameStatus.state === "invalid" && (
+                <span className="text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full font-extrabold border border-rose-200 flex items-center gap-1">
+                  <svg className="w-3 h-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                  Unrecognized Medicine Name
+                </span>
+              )}
+            </div>
+            <input 
+              value={form.name} 
+              onChange={e=>setForm({...form,name:e.target.value})} 
+              className={`input transition-all ${
+                nameStatus.state === "invalid" 
+                  ? "border-rose-300 focus:border-rose-500 bg-rose-50/20" 
+                  : nameStatus.state === "valid" 
+                  ? "border-emerald-300 focus:border-emerald-500 bg-emerald-50/10" 
+                  : ""
+              }`} 
+              required
+            />
+            {nameStatus.state === "invalid" && form.name.trim().length >= 2 && (
+              <p className="text-[11px] text-rose-600 font-semibold mt-1 ml-1">
+                This name was not found in the pharmaceutical drug database. Only authentic medicines can be saved.
+              </p>
+            )}
+            {nameStatus.suggestions && nameStatus.suggestions.length > 0 && nameStatus.suggestions[0]?.toLowerCase() !== form.name.trim().toLowerCase() && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Suggestions:</span>
+                {nameStatus.suggestions.slice(0, 4).map((sug, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, name: sug }))}
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-[#D6F3F4] text-[#004346] hover:bg-[#74B3CE]/40 font-bold transition-all border border-[#508991]/20 cursor-pointer"
+                  >
+                    {sug}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div><label className="label">Instructions / Notes</label>
             <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="input"/></div>
           <div>
@@ -629,9 +830,16 @@ function EditMedicineModal({ medicine, onClose, onSave, token, patientId }) {
                 <button type="button" onClick={()=>rmTime(t)} className="ml-1 hover:text-red-300 cursor-pointer"><X c="w-3 h-3"/></button>
               </span>)}</div>}
           </div>
-          <button type="submit" disabled={loading}
-            className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${loading?"bg-[#508991]":"bg-[#004346] hover:bg-[#508991]"}`}>
-            {loading ? "Updating..." : "Save Changes"}
+          <button 
+            type="submit" 
+            disabled={loading || nameStatus.state === "invalid" || nameStatus.state === "checking" || !form.name.trim()}
+            className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+              loading || nameStatus.state === "invalid" || nameStatus.state === "checking" || !form.name.trim()
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none" 
+                : "bg-[#004346] hover:bg-[#508991] shadow-lg shadow-[#004346]/15 cursor-pointer"
+            }`}
+          >
+            {loading ? "Updating..." : nameStatus.state === "checking" ? "Checking Medicine..." : nameStatus.state === "invalid" ? "Enter Valid Medicine" : "Save Changes"}
           </button>
         </form>
       </div>
@@ -1283,6 +1491,7 @@ function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif
   const [error, setError] = useState("");
   const [extractedList, setExtractedList] = useState(null);
   const [isEditingAll, setIsEditingAll] = useState(false);
+  const [activePreviewIdx, setActivePreviewIdx] = useState(0);
 
   const handleFileChange = e => {
     const selected = Array.from(e.target.files);
@@ -1417,28 +1626,29 @@ function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3">
-      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto relative animate-[fadeIn_.2s_ease]">
-        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"><X c="w-3.5 h-3.5"/></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4">
+      <div className={`bg-white rounded-[24px] sm:rounded-[28px] shadow-2xl w-full flex flex-col max-h-[92vh] sm:max-h-[88vh] p-4 sm:p-6 relative animate-[fadeIn_.2s_ease] ${extractedList ? "max-w-5xl h-[88vh]" : "max-w-2xl"}`}>
+        <button onClick={onClose} className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer z-20"><X c="w-3.5 h-3.5"/></button>
 
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-bold">
+        {/* Modal Header */}
+        <div className="flex items-center gap-3 mb-2 shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#D6F3F4] text-[#004346] flex items-center justify-center font-bold shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           </div>
           <div>
-            <h2 className="text-xl font-extrabold text-[#004346]">Prescription OCR Multi-Scan</h2>
-            <p className="text-xs text-gray-400">Scans all medicines in your prescription image at once</p>
+            <h2 className="text-lg sm:text-xl font-extrabold text-[#004346]">Prescription OCR Multi-Scan</h2>
+            <p className="text-[11px] sm:text-xs text-gray-400">Scans all medicines in your prescription image at once</p>
           </div>
         </div>
 
         {error && (
-          <div className="my-4 px-4 py-3 bg-red-50 border border-red-100 rounded-2xl text-red-700 text-xs font-semibold flex items-center gap-2">
+          <div className="mb-3 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2 shrink-0">
             <AlertIcon c="w-4 h-4"/>{error}
           </div>
         )}
 
         {!extractedList ? (
-          <div className="space-y-4 my-6">
+          <div className="space-y-4 my-auto overflow-y-auto p-1">
             <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center hover:border-[#508991] transition-all bg-gray-50/50">
               {previews.length > 0 ? (
                 <div className="space-y-3">
@@ -1468,163 +1678,216 @@ function OcrUploadModal({ onClose, onSave, token, patientId, showToast, addNotif
             </div>
 
             <button onClick={handleScan} disabled={files.length === 0 || scanning}
-              className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm cursor-pointer transition-all ${files.length === 0 || scanning ? "bg-gray-300" : "bg-[#004346] hover:bg-[#508991]"}`}>
-              {scanning ? "Extracting all the medicines..." : files.length > 1 ? "Scan & Extract All (Multi-Page)" : "Scan & Extract All Medicines"}
+              className={`w-full py-3 rounded-2xl text-white font-bold text-xs sm:text-sm cursor-pointer transition-all ${files.length === 0 || scanning ? "bg-gray-300" : "bg-[#004346] hover:bg-[#508991]"}`}>
+              {scanning ? "Extracting all the medicines..." : files.length > 1 ? "Scan And Extract All (Multi-Page)" : "Scan And Extract All Medicines"}
             </button>
           </div>
         ) : (
-          <div className="space-y-4 my-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-teal-50 border border-teal-100 rounded-2xl">
-              <div className="flex items-center gap-2">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden gap-2.5">
+            {/* Top info toolbar */}
+            <div className="flex items-center justify-between gap-2 px-3 py-2 bg-teal-50 border border-teal-100 rounded-xl shrink-0">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <Check c="w-4 h-4 text-teal-600 shrink-0"/>
-                <span className="text-xs font-bold text-[#004346]">Extracted {extractedList.length} medicine(s) from prescription.</span>
+                <span className="text-xs font-bold text-[#004346] truncate">Extracted {extractedList.length} medicine(s) from prescription.</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button type="button" onClick={() => setIsEditingAll(!isEditingAll)}
-                  className="px-3 py-1.5 rounded-xl border border-teal-200 text-[#004346] text-xs font-extrabold hover:bg-teal-50 transition-all cursor-pointer">
-                  {isEditingAll ? "Save Changes" : "Edit"}
+                  className="px-2.5 py-1 rounded-lg border border-teal-200 text-[#004346] text-xs font-extrabold hover:bg-teal-100/60 transition-all cursor-pointer">
+                  {isEditingAll ? "Done Editing" : "Edit Details"}
                 </button>
                 <button type="button" onClick={addEmptyMedicine}
-                  className="px-3 py-1.5 rounded-xl bg-[#004346] text-white text-xs font-bold hover:bg-[#508991] transition-all cursor-pointer">
-                  + Add Medicine
+                  className="px-2.5 py-1 rounded-lg bg-[#004346] text-white text-xs font-bold hover:bg-[#508991] transition-all cursor-pointer">
+                  + Add
                 </button>
               </div>
             </div>
 
-            {/* List of extracted medicines */}
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {extractedList.map((item, idx) => (
-                <div key={item.id || idx} className="p-4 rounded-2xl border border-gray-200 bg-white shadow-xs space-y-3">
-                  <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-extrabold text-[#004346] uppercase">Medicine #{idx + 1}</span>
-                      <span className="px-2 py-0.5 rounded-md bg-[#D6F3F4] text-[#004346] text-[10px] font-extrabold uppercase">{item.formulation}</span>
-                    </div>
-                    {extractedList.length > 1 && (
-                      <button type="button" onClick={() => removeMedicine(idx)}
-                        className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer">
-                        <Trash c="w-4 h-4"/>
-                      </button>
-                    )}
-                  </div>
-
-                  {isEditingAll ? (
-                    <div className="space-y-3 pt-1">
-                      <div>
-                        <label className="label">Medicine Name *</label>
-                        <input value={item.name} onChange={e => updateMedicine(idx, "name", e.target.value)} className="input" placeholder="e.g. Stil CV 500mg" required/>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="label">Dosage</label>
-                          <input value={item.dosage} onChange={e => updateMedicine(idx, "dosage", e.target.value)} className="input" placeholder="e.g. 1 tablet twice daily"/>
-                        </div>
-                        <div>
-                          <label className="label">Disease / Category</label>
-                          <input value={item.category} onChange={e => updateMedicine(idx, "category", e.target.value)} className="input" placeholder="e.g. Otitis Externa Left"/>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="label">Medicine Form</label>
-                          <select value={item.formulation} onChange={e => updateMedicine(idx, "formulation", e.target.value)} className="input">
-                            <option value="tablet">Tablet</option>
-                            <option value="capsule">Capsule</option>
-                            <option value="liquid">Liquid</option>
-                            <option value="ointment">Ointment</option>
-                            <option value="injection">Injection</option>
-                            <option value="drops">Drops</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="label">Start Date</label>
-                          <input type="date" value={item.start_date} onChange={e => updateMedicine(idx, "start_date", e.target.value)} className="input"/>
-                        </div>
-                        <div>
-                          <label className="label">End Date</label>
-                          <input type="date" value={item.end_date} onChange={e => updateMedicine(idx, "end_date", e.target.value)} className="input"/>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="label">Stock Count</label>
-                          <input type="number" min="0" value={item.stock} onChange={e => updateMedicine(idx, "stock", e.target.value)} className="input" placeholder="10"/>
-                        </div>
-                        <div>
-                          <label className="label">Times Per Day</label>
-                          <input type="number" min="1" max="6" value={item.times_per_day} onChange={e => {
-                            const val = e.target.value;
-                            updateMedicine(idx, "times_per_day", val);
-                            const n = parseInt(val);
-                            if (n > 0 && item.times.length > n) {
-                              updateMedicine(idx, "times", item.times.slice(0, n));
-                            }
-                          }} className="input"/>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="label">Reminder Times *</label>
-                        <AmPmTimePicker onAdd={(newTime) => {
-                          const maxAllowed = parseInt(item.times_per_day) || 1;
-                          if (item.times.length >= maxAllowed) {
-                            setError(`Cannot add more than ${maxAllowed} reminder time(s) for a ${maxAllowed}x daily dose on Medicine #${idx + 1}.`);
-                            return;
-                          }
-                          setError("");
-                          if (!item.times.includes(newTime)) {
-                            updateMedicine(idx, "times", [...item.times, newTime].sort());
-                          }
-                        }}/>
-                        {item.times.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {item.times.map(t => (
-                              <span key={t} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#004346] text-white text-xs font-bold">
-                                <Clock c="w-3.5 h-3.5"/>{t}
-                                <button type="button" onClick={() => updateMedicine(idx, "times", item.times.filter(x => x !== t))}
-                                  className="ml-1 hover:text-red-300 cursor-pointer">
-                                  <X c="w-3.5 h-3.5"/>
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="label">Instructions / Notes</label>
-                        <input value={item.instructions} onChange={e => updateMedicine(idx, "instructions", e.target.value)} className="input" placeholder="e.g. Take BD/PC after food"/>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 text-xs text-gray-700">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        <div><span className="text-gray-400 font-medium">Name:</span> <span className="font-extrabold text-[#004346]">{item.name || "—"}</span></div>
-                        <div><span className="text-gray-400 font-medium">Dosage:</span> <span className="font-bold text-gray-800">{item.dosage || "1 tablet"}</span></div>
-                        <div><span className="text-gray-400 font-medium">Disease / Category:</span> <span className="font-bold text-[#508991]">{item.category || "Other"}</span></div>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-gray-100 text-[11px]">
-                        <div><span className="text-gray-400">Start Date:</span> <span className="font-semibold text-gray-800">{item.start_date || "Today"}</span></div>
-                        <div><span className="text-gray-400">End Date:</span> <span className="font-semibold text-gray-800">{item.end_date || "N/A"}</span></div>
-                        <div><span className="text-gray-400">Frequency:</span> <span className="font-bold text-gray-800">{item.times_per_day || item.times.length}x daily</span></div>
-                        <div><span className="text-gray-400">Stock:</span> <span className="font-extrabold text-[#004346]">{item.stock} units</span></div>
-                      </div>
-                      <div className="pt-1 border-t border-gray-100 text-[11px] flex flex-wrap items-center gap-3">
-                        <div><span className="text-gray-400">Reminder Times:</span> <span className="font-bold text-[#004346] bg-teal-50 px-2 py-0.5 rounded-md">{item.times.join(", ")}</span></div>
-                        {item.instructions && <div><span className="text-gray-400">Instructions:</span> <span className="font-medium text-gray-700 italic">{item.instructions}</span></div>}
-                      </div>
-                    </div>
+            {/* Main side-by-side work area */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 min-h-0 overflow-hidden">
+              {/* Left Column: Prescription Image Preview */}
+              <div className="md:col-span-5 bg-gray-50 border border-gray-200 rounded-2xl p-2.5 flex flex-col min-h-0 overflow-hidden gap-2">
+                <div className="flex items-center justify-between shrink-0 px-1">
+                  <span className="text-[11px] font-extrabold text-[#004346] uppercase tracking-wide flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-[#508991]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    Prescription Preview
+                  </span>
+                  {previews.length > 1 && (
+                    <span className="text-[10px] text-gray-500 font-bold">{activePreviewIdx + 1} of {previews.length}</span>
                   )}
                 </div>
-              ))}
+
+                {previews.length > 0 ? (
+                  <div className="flex-1 min-h-0 relative rounded-xl overflow-hidden border border-gray-200 bg-white group flex items-center justify-center">
+                    <img
+                      src={previews[activePreviewIdx] || previews[0]}
+                      alt="Scanned Prescription"
+                      className="w-full h-full object-contain rounded-xl p-1"
+                    />
+                    <a
+                      href={previews[activePreviewIdx] || previews[0]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute bottom-2 right-2 px-2.5 py-1 bg-[#004346]/85 hover:bg-[#004346] text-white text-[10px] font-bold rounded-lg backdrop-blur-xs flex items-center gap-1 shadow-sm transition-all"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                      Full Size
+                    </a>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-xs text-gray-400">No image preview available</div>
+                )}
+
+                {previews.length > 1 && (
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5 shrink-0">
+                    {previews.map((pUrl, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => setActivePreviewIdx(pIdx)}
+                        className={`w-12 h-12 rounded-lg border-2 overflow-hidden shrink-0 cursor-pointer transition-all ${activePreviewIdx === pIdx ? "border-[#004346] shadow-sm" : "border-gray-200 opacity-60 hover:opacity-100"}`}
+                      >
+                        <img src={pUrl} className="w-full h-full object-cover"/>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Extracted Medicines List */}
+              <div className="md:col-span-7 space-y-2.5 min-h-0 overflow-y-auto pr-1">
+                {extractedList.map((item, idx) => (
+                  <div key={item.id || idx} className="p-3.5 rounded-2xl border border-gray-200 bg-white shadow-xs space-y-2.5">
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-extrabold text-[#004346] uppercase">Medicine #{idx + 1}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-[#D6F3F4] text-[#004346] text-[10px] font-extrabold uppercase">{item.formulation}</span>
+                      </div>
+                      {extractedList.length > 1 && (
+                        <button type="button" onClick={() => removeMedicine(idx)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer">
+                          <Trash c="w-3.5 h-3.5"/>
+                        </button>
+                      )}
+                    </div>
+
+                    {isEditingAll ? (
+                      <div className="space-y-2.5 pt-0.5">
+                        <div>
+                          <label className="label">Medicine Name *</label>
+                          <input value={item.name} onChange={e => updateMedicine(idx, "name", e.target.value)} className="input text-xs" placeholder="e.g. Acyclovir 800mg" required/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="label">Dosage</label>
+                            <input value={item.dosage} onChange={e => updateMedicine(idx, "dosage", e.target.value)} className="input text-xs" placeholder="e.g. 800mg 5 times a day"/>
+                          </div>
+                          <div>
+                            <label className="label">Disease / Category</label>
+                            <input value={item.category} onChange={e => updateMedicine(idx, "category", e.target.value)} className="input text-xs" placeholder="e.g. Herpes Zoster Oticus"/>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="label">Formulation</label>
+                            <select value={item.formulation} onChange={e => updateMedicine(idx, "formulation", e.target.value)} className="input text-xs">
+                              <option value="tablet">Tablet</option>
+                              <option value="capsule">Capsule</option>
+                              <option value="liquid">Liquid</option>
+                              <option value="ointment">Ointment</option>
+                              <option value="injection">Injection</option>
+                              <option value="drops">Drops</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label">Start Date</label>
+                            <input type="date" value={item.start_date} onChange={e => updateMedicine(idx, "start_date", e.target.value)} className="input text-xs"/>
+                          </div>
+                          <div>
+                            <label className="label">End Date</label>
+                            <input type="date" value={item.end_date} onChange={e => updateMedicine(idx, "end_date", e.target.value)} className="input text-xs"/>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="label">Stock Count</label>
+                            <input type="number" min="0" value={item.stock} onChange={e => updateMedicine(idx, "stock", e.target.value)} className="input text-xs" placeholder="10"/>
+                          </div>
+                          <div>
+                            <label className="label">Times Per Day</label>
+                            <input type="number" min="1" max="6" value={item.times_per_day} onChange={e => {
+                              const val = e.target.value;
+                              updateMedicine(idx, "times_per_day", val);
+                              const n = parseInt(val);
+                              if (n > 0 && item.times.length > n) {
+                                updateMedicine(idx, "times", item.times.slice(0, n));
+                              }
+                            }} className="input text-xs"/>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="label">Reminder Times *</label>
+                          <AmPmTimePicker onAdd={(newTime) => {
+                            const maxAllowed = parseInt(item.times_per_day) || 1;
+                            if (item.times.length >= maxAllowed) {
+                              setError(`Cannot add more than ${maxAllowed} reminder time(s) for a ${maxAllowed}x daily dose on Medicine #${idx + 1}.`);
+                              return;
+                            }
+                            setError("");
+                            if (!item.times.includes(newTime)) {
+                              updateMedicine(idx, "times", [...item.times, newTime].sort());
+                            }
+                          }}/>
+                          {item.times.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {item.times.map(t => (
+                                <span key={t} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#004346] text-white text-[11px] font-bold">
+                                  <Clock c="w-3 h-3"/>{t}
+                                  <button type="button" onClick={() => updateMedicine(idx, "times", item.times.filter(x => x !== t))}
+                                    className="ml-1 hover:text-red-300 cursor-pointer">
+                                    <X c="w-3 h-3"/>
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="label">Instructions / Notes</label>
+                          <input value={item.instructions} onChange={e => updateMedicine(idx, "instructions", e.target.value)} className="input text-xs" placeholder="e.g. Take after food"/>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 text-xs text-gray-700">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div><span className="text-gray-400 font-medium">Name:</span> <span className="font-extrabold text-[#004346]">{item.name || "—"}</span></div>
+                          <div><span className="text-gray-400 font-medium">Dosage:</span> <span className="font-bold text-gray-800">{item.dosage || "1 tablet"}</span></div>
+                          <div><span className="text-gray-400 font-medium">Disease / Category:</span> <span className="font-bold text-[#508991]">{item.category || "Other"}</span></div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-gray-100 text-[11px]">
+                          <div><span className="text-gray-400">Start Date:</span> <span className="font-semibold text-gray-800">{item.start_date || "Today"}</span></div>
+                          <div><span className="text-gray-400">End Date:</span> <span className="font-semibold text-gray-800">{item.end_date || "N/A"}</span></div>
+                          <div><span className="text-gray-400">Frequency:</span> <span className="font-bold text-gray-800">{item.times_per_day || item.times.length}x daily</span></div>
+                          <div><span className="text-gray-400">Stock:</span> <span className="font-extrabold text-[#004346]">{item.stock} units</span></div>
+                        </div>
+                        <div className="pt-1 border-t border-gray-100 text-[11px] flex flex-wrap items-center gap-3">
+                          <div><span className="text-gray-400">Reminder Times:</span> <span className="font-bold text-[#004346] bg-teal-50 px-2 py-0.5 rounded-md">{item.times.join(", ")}</span></div>
+                          {item.instructions && <div><span className="text-gray-400">Instructions:</span> <span className="font-medium text-gray-700 italic">{item.instructions}</span></div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
-
-            <div className="flex items-center gap-3 pt-3">
-              <button type="button" onClick={() => { setExtractedList(null); setFiles([]); setPreviews([]); }} className="py-3 px-4 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs cursor-pointer">
+            {/* Pinned Modal Footer */}
+            <div className="flex items-center gap-3 pt-2.5 border-t border-gray-100 shrink-0">
+              <button type="button" onClick={() => { setExtractedList(null); setFiles([]); setPreviews([]); }} className="py-2.5 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs cursor-pointer">
                 Rescan Image
               </button>
               <button type="button" onClick={handleSaveAll} disabled={saving}
-                className={`flex-1 py-3 rounded-2xl text-white font-bold text-xs cursor-pointer transition-all ${saving ? "bg-[#508991]" : "bg-[#004346] hover:bg-[#508991]"}`}>
-                {saving ? "Saving All Medicines..." : `Save All ${extractedList.length} Medicine(s) to Schedule`}
+                className={`flex-1 py-2.5 rounded-xl text-white font-bold text-xs cursor-pointer transition-all ${saving ? "bg-[#508991]" : "bg-[#004346] hover:bg-[#508991]"}`}>
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -2232,16 +2495,49 @@ export default function Dashboard() {
 
   const [tab, setTab] = useState(() => {
     const p = new URLSearchParams(window.location.search);
-    return p.get("tab") || "overview";
+    const urlTab = p.get("tab");
+    const storedTab = localStorage.getItem("pillsync_active_tab");
+    return urlTab || storedTab || "overview";
   });
-  const [tabHistory, setTabHistory] = useState(["overview"]);
-  const goTo = t => { setTab(t); setTabHistory(h => [...h, t]); localStorage.setItem("pillsync_active_tab", t); };
+  const [tabHistory, setTabHistory] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const initialTab = p.get("tab") || localStorage.getItem("pillsync_active_tab") || "overview";
+    return [initialTab];
+  });
+
+  const goTo = t => {
+    if (!t) return;
+    setTab(t);
+    setTabHistory(h => (h[h.length - 1] === t ? h : [...h, t]));
+    localStorage.setItem("pillsync_active_tab", t);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", t);
+    window.history.replaceState(null, "", url.toString());
+  };
+
   const goBack = () => {
     if (tabHistory.length <= 1) return;
     const h = tabHistory.slice(0, -1);
-    setTabHistory(h); setTab(h[h.length - 1]);
+    const prevTab = h[h.length - 1];
+    setTabHistory(h);
+    setTab(prevTab);
+    localStorage.setItem("pillsync_active_tab", prevTab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", prevTab);
+    window.history.replaceState(null, "", url.toString());
   };
   const canGoBack = tabHistory.length > 1;
+
+  useEffect(() => {
+    if (tab) {
+      localStorage.setItem("pillsync_active_tab", tab);
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("tab") !== tab) {
+        url.searchParams.set("tab", tab);
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+  }, [tab]);
 
   const [showAdd,          setShowAdd]          = useState(false);
   const [showOcrModal,     setShowOcrModal]     = useState(false);
@@ -2252,10 +2548,16 @@ export default function Dashboard() {
   const [deleteConfirm,           setDeleteConfirm]           = useState(null);
   const [showDeleteAccountModal,  setShowDeleteAccountModal]  = useState(false);
   const [deleteAccountLoading,    setDeleteAccountLoading]    = useState(false);
-  const [progressSubTab,          setProgressSubTab]          = useState("chart");
+  const [progressSubTab,          setProgressSubTab]          = useState(() => localStorage.getItem("pillsync_progress_subtab") || "chart");
   const [globalMedSearch,         setGlobalMedSearch]         = useState("");
   const [searchDropdownOpen,      setSearchDropdownOpen]      = useState(false);
   const [historyFilter,           setHistoryFilter]           = useState("all");
+
+  useEffect(() => {
+    if (progressSubTab) {
+      localStorage.setItem("pillsync_progress_subtab", progressSubTab);
+    }
+  }, [progressSubTab]);
 
 
   // AI Assistant states
@@ -2294,7 +2596,17 @@ export default function Dashboard() {
   const [calOffset,    setCalOffset]    = useState(0);
 
   const [patientList,       setPatientList]       = useState([]);
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [selectedPatientId, setSelectedPatientId] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const pid = p.get("patient_id") || localStorage.getItem("pillsync_selected_patient_id");
+    return pid ? Number(pid) : null;
+  });
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      localStorage.setItem("pillsync_selected_patient_id", String(selectedPatientId));
+    }
+  }, [selectedPatientId]);
 
   const [medicines,   setMedicines]   = useState([]);
   const [medSearch,   setMedSearch]   = useState("");
@@ -2637,13 +2949,37 @@ export default function Dashboard() {
     return () => clearInterval(iv);
   }, [schedule, selectedDate]);
 
+  const handleUndoMerge = async (medId, medName) => {
+    try {
+      const q = effectivePatientId ? `?patient_id=${effectivePatientId}` : "";
+      const res = await axios.post(`${API}/medicines/${medId}/undo-merge${q}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showToast(res.data?.message || `Reverted ${medName} to previous dosage.`);
+      addNotif(`Reverted "${medName}" to previous dosage and schedule.`, "info", "Dosage Reverted");
+      loadSchedule();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Failed to undo merge", "error");
+    }
+  };
+
   const executeDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      if (deleteConfirm.type === "medicine") {
+      if (deleteConfirm.type === "dose") {
+        const q = effectivePatientId ? `?patient_id=${effectivePatientId}` : "";
+        await axios.post(`${API}/medicines/${deleteConfirm.medicine_id}/skip-dose${q}`, {
+          date_str: deleteConfirm.date_str,
+          scheduled_time: deleteConfirm.time,
+          status: "skipped"
+        }, { headers: { Authorization: `Bearer ${token}` } });
+        showToast(`Dose for ${deleteConfirm.name} (${deleteConfirm.time}) removed for ${deleteConfirm.date_str}.`);
+        addNotif(`Dose for "${deleteConfirm.name}" at ${deleteConfirm.time} removed for ${deleteConfirm.date_str}.`, "info");
+        loadSchedule();
+      } else if (deleteConfirm.type === "medicine") {
         const q = effectivePatientId ? `?patient_id=${effectivePatientId}` : "";
         await axios.delete(`${API}/medicines/${deleteConfirm.id}${q}`, { headers: { Authorization: `Bearer ${token}` } });
-        showToast(`${deleteConfirm.name} removed.`);
+        showToast(`${deleteConfirm.name} removed from active medicines.`);
         addNotif(`Medicine "${deleteConfirm.name}" has been removed.`, "info");
         loadSchedule();
       } else if (deleteConfirm.type === "patient") {
@@ -2652,7 +2988,7 @@ export default function Dashboard() {
         addNotif(`Patient "${deleteConfirm.name}" has been deleted.`, "info");
         loadPatients();
       }
-    } catch { showToast("Delete failed", "error"); }
+    } catch { showToast("Action failed", "error"); }
     setDeleteConfirm(null);
   };
 
@@ -3113,8 +3449,17 @@ export default function Dashboard() {
 
       {deleteConfirm && (
         <ConfirmModal
-          title={`Delete ${deleteConfirm.type === "medicine" ? "Medicine" : "Patient"}`}
-          message={`Are you sure you want to remove "${deleteConfirm.name}"? This cannot be undone.`}
+          title={
+            deleteConfirm.type === "dose"
+              ? "Remove Dose for Today"
+              : `Delete ${deleteConfirm.type === "medicine" ? "Medicine" : "Patient"}`
+          }
+          message={
+            deleteConfirm.type === "dose"
+              ? `Remove the ${deleteConfirm.time} dose of "${deleteConfirm.name}" for ${deleteConfirm.date_str}? This only removes this single dose slot for this date without deleting the medicine from your list.`
+              : `Are you sure you want to remove "${deleteConfirm.name}"? This cannot be undone.`
+          }
+          confirmLabel={deleteConfirm.type === "dose" ? "Remove Dose" : "Delete"}
           onConfirm={executeDelete}
           onCancel={() => setDeleteConfirm(null)}
         />
@@ -3288,7 +3633,7 @@ export default function Dashboard() {
           {/* User Profile Summary Header */}
           <div className={`flex items-center gap-2 sm:gap-2.5 border-l pl-2 sm:pl-3 ${appSettings.darkMode ? "border-gray-800" : "border-gray-200"}`}>
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#004346] text-white font-extrabold flex items-center justify-center uppercase shadow-sm text-xs sm:text-sm shrink-0">
-              {user?.name?.slice(0,2)||"PS"}
+              {getInitials(user?.name)}
             </div>
             <div className="block">
               <div className="flex items-center gap-1.5">
@@ -3528,8 +3873,8 @@ export default function Dashboard() {
                             className="w-8 h-8 rounded-xl bg-white/70 border border-white text-[#508991] hover:text-[#004346] hover:bg-[#D6F3F4] flex items-center justify-center cursor-pointer transition-all" title="Edit medicine">
                             <Edit c="w-3.5 h-3.5"/>
                           </button>
-                          <button onClick={()=>setDeleteConfirm({type:"medicine",id:dose.medicine_id,name:dose.name})}
-                            className="w-8 h-8 rounded-xl bg-white/70 border border-white text-rose-400 hover:bg-rose-500 hover:text-white flex items-center justify-center cursor-pointer transition-all">
+                          <button onClick={()=>setDeleteConfirm({type:"dose",medicine_id:dose.medicine_id,time:dose.scheduled_time,name:dose.name,date_str:selectedDate})}
+                            className="w-8 h-8 rounded-xl bg-white/70 border border-white text-rose-400 hover:bg-rose-500 hover:text-white flex items-center justify-center cursor-pointer transition-all" title="Remove this dose for today">
                             <Trash c="w-3.5 h-3.5"/>
                           </button>
                         </div>
@@ -3570,14 +3915,20 @@ export default function Dashboard() {
                       <div className="w-full bg-white/15 rounded-full h-2 mb-4">
                         <div className="bg-[#74B3CE] h-2 rounded-full transition-all duration-700" style={{width:`${Math.round(adherence.adherence_pct||0)}%`}}/>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white/10 rounded-2xl p-3">
-                          <p className="text-xl font-extrabold text-emerald-400">{adherence.taken}</p>
-                          <p className="text-[10px] text-white/60 font-semibold">Taken</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-white/10 rounded-2xl p-2.5 sm:p-3 text-center">
+                          <p className="text-lg sm:text-xl font-extrabold text-emerald-400">{adherence.taken || 0}</p>
+                          <p className="text-[10px] text-white/70 font-semibold">Taken</p>
                         </div>
-                        <div className="bg-white/10 rounded-2xl p-3">
-                          <p className="text-xl font-extrabold text-rose-400">{adherence.missed}</p>
-                          <p className="text-[10px] text-white/60 font-semibold">Missed</p>
+                        <div className="bg-white/10 rounded-2xl p-2.5 sm:p-3 text-center">
+                          <p className="text-lg sm:text-xl font-extrabold text-rose-400">{adherence.missed || 0}</p>
+                          <p className="text-[10px] text-white/70 font-semibold">Missed</p>
+                        </div>
+                        <div className="bg-white/10 rounded-2xl p-2.5 sm:p-3 text-center">
+                          <p className="text-lg sm:text-xl font-extrabold text-amber-300">
+                            {Math.max(0, (adherence.total_scheduled || 0) - ((adherence.taken || 0) + (adherence.missed || 0)))}
+                          </p>
+                          <p className="text-[10px] text-white/70 font-semibold">Pending</p>
                         </div>
                       </div>
                     </div>
@@ -3740,6 +4091,19 @@ export default function Dashboard() {
                       <div className="flex flex-wrap gap-1.5">
                         {med.schedules.map(t=><span key={t} className="flex items-center gap-1 px-2 py-1 rounded-xl bg-[#004346]/8 text-[#004346] text-[10px] font-bold"><Clock c="w-2.5 h-2.5"/>{t}</span>)}
                       </div>
+                    )}
+                    {med.has_previous_state && (
+                      <button
+                        type="button"
+                        onClick={() => handleUndoMerge(med.id, med.name)}
+                        className="mt-1 w-full py-2 px-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                        title="Revert to previous dosage and schedule"
+                      >
+                        <svg className="w-3.5 h-3.5 text-amber-700 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h10a5 5 0 015 5v2m0 0l-4-4m4 4l4-4" />
+                        </svg>
+                        Undo Merge (Revert to Previous Dosage)
+                      </button>
                     )}
                   </div>
                 ))}
@@ -4537,7 +4901,7 @@ export default function Dashboard() {
                 </div>
               ) : emergencyContacts.map((c,i)=>(
                 <div key={c.id || i} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                  <div className="w-10 h-10 rounded-xl bg-[#D6F3F4] text-[#004346] font-extrabold flex items-center justify-center uppercase text-sm">{c.name?.slice(0,2)}</div>
+                  <div className="w-10 h-10 rounded-xl bg-[#D6F3F4] text-[#004346] font-extrabold flex items-center justify-center uppercase text-sm">{getInitials(c.name)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-[#004346]">{c.name}</p>
                     <p className="text-xs text-gray-400">

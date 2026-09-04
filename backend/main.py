@@ -60,10 +60,12 @@ try:
     import pytesseract
     from PIL import Image, ImageEnhance, ImageFilter
     TESSERACT_AVAILABLE = True
+    PIL_AVAILABLE = True
     if os.path.exists(TESSERACT_EXE):
         pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 except ImportError:
     TESSERACT_AVAILABLE = False
+    PIL_AVAILABLE = False
     logging.warning("pytesseract or PIL not installed – OCR disabled")
 
 SECRET_KEY    = os.getenv("SECRET_KEY", "fallback-secret-change-in-production")
@@ -72,7 +74,7 @@ EXPIRE        = 1440          # minutes (1 day)
 SENDGRID_KEY   = os.getenv("SENDGRID_API_KEY", "")
 FROM_EMAIL     = os.getenv("SENDGRID_FROM_EMAIL", os.getenv("FROM_EMAIL", "noreply@pillsync.app"))
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL     = os.getenv("GROQ_MODEL", "groq/compound")
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
@@ -82,11 +84,11 @@ def call_groq_with_fallback(client, **kwargs):
     """Executes a Groq completion call with model fallbacks if a model gets decommissioned."""
     models_to_try = [
         GROQ_MODEL,
-        "groq/compound",
+        "qwen/qwen3.8-27b",
         "qwen/qwen3.6-27b",
+        "groq/compound-mini",
         "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
-        "groq/compound-mini"
+        "groq/compound"
     ]
     # Remove duplicates while preserving order
     models_to_try = list(dict.fromkeys(models_to_try))
@@ -103,151 +105,207 @@ def call_groq_with_fallback(client, **kwargs):
             logging.warning(f"[GROQ] Model {m} failed: {e}. Trying fallback model...")
     raise last_err
 
-# ── Medicine Name Verification via RxNorm + OpenFDA (no API key needed) ──
+# ── Medicine Name Verification via Curated Global & Indian Drug Database + RxNorm + OpenFDA + AI Fallback ──
+COMMON_DRUG_NAMES = {
+    # Antibiotics & Antiprotozoals
+    "metrogyl", "metronidazole", "flagyl", "rifagut", "rifaximin", "rcifax",
+    "amoxicillin", "moxikind", "augmentin", "clavam", "novamox", "mox",
+    "azithral", "azithromycin", "aziwok", "zady", "azee", "zithrox",
+    "ciprobid", "ciprofloxacin", "cifran", "ciro", "ciplox",
+    "ofloxacin", "oflox", "zanocin", "levofloxacin", "levomac", "levo",
+    "cefixime", "zifi", "taxim-o", "ceftas", "mahacef", "omnix",
+    "cefpodoxime", "gudcef", "doxcef", "mono-cef", "monocef", "taxim",
+    "doxycycline", "doxy-1", "doxy", "minoz", "minocycline", "tetracycline",
+    "norflox", "norfloxacin", "norbactin", "bactrim", "septran",
+    "clarithromycin", "claribid", "maclar", "zoclar", "erythromycin",
+    "faropenem", "farobact", "linezolid", "linid", "lizomac",
+
+    # Antacids, PPIs, GI
+    "pan", "pan 40", "pan-d", "pan 20", "pantocid", "pantocid-dsr", "pantoprazole",
+    "pantop", "pantodac", "omez", "omez-d", "omeprazole", "rabeprazole",
+    "rabicip", "rablet", "rabium", "rantac", "rantac 150", "rantac 300",
+    "ranitidine", "aciloc", "aciloc 150", "aciloc 300", "famotidine", "facid",
+    "gelusil", "gelusil mps", "digene", "mucaine", "mucaine gel", "sucralfate",
+    "pudin hara", "eno", "gaviscon", "cremaffin", "dulcoflex", "bisacodyl",
+    "lactulose", "duphalac", "peg", "movicol", "looz", "cremaffin plus",
+    "eldoper", "loperamide", "imodium", "econorm", "darolac", "vizylac",
+    "normaxin", "librax", "cyclopam", "meftal spas", "drotin", "drotin-m",
+    "drotaverine", "colimex", "spasmonil", "ondem", "ondansetron", "vomikind",
+    "domperidone", "domstal", "motilium", "ganaton", "itopride",
+
+    # Pain, Fever, Anti-inflammatory
+    "paracetamol", "dolo", "dolo 650", "calpol", "calpol 650", "calpol 500",
+    "calpol 250", "crocin", "crocin 650", "crocin advance", "pacimol", "p-650",
+    "combiflam", "ibuprofen", "brufen", "ibugesic", "ibugesic plus",
+    "meftal", "mefenamic acid", "meftal-p", "aspirin", "ecosprin", "ecosprin 75",
+    "ecosprin 150", "disprin", "aspin", "diclofenac", "voveran", "dynapar",
+    "zerodol", "zerodol-p", "zerodol-sp", "zerodol-th", "aceclofenac",
+    "naproxen", "naprosyn", "ketorolac", "ketorol", "tramadol", "tramazac",
+    "ultracet", "etoricoxib", "nucoxia", "etoshine",
+
+    # Allergy, Cough, Cold, Respiratory
+    "cetirizine", "cetzine", "cetcip", "alerdiz", "okacet",
+    "levocetirizine", "levocet", "l-cet", "xyzall", "teczine", "1-alm",
+    "fexofenadine", "allegra", "allegra 120", "allegra 180", "fexova",
+    "montelukast", "montair", "montek", "montair lc", "montek lc", "telekast-l",
+    "avil", "pheniramine", "benadryl", "ascoril", "ascoril-d", "ascoril ls",
+    "grilinctus", "grilinctus-bm", "alex", "alex syrup", "solvin cold", "sinarest",
+    "cheston cold", "wikoryl", "maxtra", "chericof", "tusq", "tusq-d", "cough syrup",
+    "asthalin", "salbutamol", "duolin", "budecort", "budesonide", "foracort",
+    "seroflo", "deriphyllin", "theophylline",
+
+    # Diabetes, Blood Pressure, Heart
+    "metformin", "glycomet", "glycomet gp", "glycomet 500", "glycomet 850", "glycomet 1g",
+    "glimepiride", "amaryl", "gemer", "glimestar", "gliclazide", "diamicron",
+    "teneligliptin", "tenlimac", "ziten", "sitagliptin", "januvia", "janumet",
+    "vildagliptin", "galvus", "galvus met", "dapagliflozin", "forxiga", "oxra",
+    "empagliflozin", "jardiance", "insulin", "lantus", "novorapid", "mixtard",
+    "telmisartan", "telma", "telma 40", "telma 80", "telmikind", "telpres", "telsartan",
+    "amlodipine", "amlokind", "amlopres", "stamlo", "stamlo 5", "losartan", "losacar", "repace",
+    "olmesartan", "olmat", "ramipril", "cardace", "enalapril", "envas",
+    "atenolol", "aten", "metoprolol", "metolar", "betaloc", "propranolol", "ciplar",
+    "atorvastatin", "atorva", "atorlip", "lipitor", "rosuvastatin", "rosuvas", "rosave",
+    "clopidogrel", "clopilet", "plavix", "vymada", "cidmus",
+
+    # Vitamins, Minerals, Supplements, Thyroid, Hormones
+    "vitamin c", "limcee", "celin", "vitamin d", "vitamin d3", "calcirol", "uprise-d3", "d-rise",
+    "vitamin e", "evion", "evion 400", "evion 600", "neurobion", "neurobion forte", "becosules",
+    "supradyn", "zincovit", "a to z", "shelcal", "shelcal 500", "shelcal hd", "calcium",
+    "cipcal", "gemcal", "autrin", "dexorange", "orofer xt", "feronia xt", "folvite", "folic acid",
+    "thyronorm", "thyronorm 25", "thyronorm 50", "thyronorm 75", "thyronorm 100", "eltroxin", "levothyroxine",
+    "duphaston", "dydrogesterone", "susten", "progesterone", "ovabless",
+
+    # Antivirals, Antifungals, Topicals, Eye/Ear
+    "acyclovir", "acivir", "zovirax", "valacyclovir", "valcivir",
+    "fluconazole", "forcan", "fluka", "diflucan", "itraconazole", "canditral", "itrasys",
+    "terbinafine", "tyza", "terbicip", "sofradex", "ciidex", "gentamicin", "tobramycin",
+    "tobrex", "moxicip", "moxifloxacin", "vigamox", "refresh tears", "systane",
+    "betadine", "povidone iodine", "t-bact", "mupirocin", "fucidin", "quadriderm",
+    "candid", "clotrimazole", "candid-b", "volini", "moov", "omnigel", "relispray"
+}
+
+def clean_drug_term(name: str) -> str:
+    s = re.sub(r"\b\d+(\.\d+)?\s*(?:mg|ml|mcg|gm|g|iu|%)?\b", "", name, flags=re.IGNORECASE)
+    s = re.sub(r"\b(tablet|tablets|capsule|capsules|ointment|cream|gel|syrup|suspension|drops|injection|spray|solution|lotion)\b", "", s, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", s).strip()
+
 async def verify_medicine_name_api(name: str) -> dict:
     """
-    Checks a medicine name against RxNorm and OpenFDA.
+    Checks a medicine name against Curated Drug DB, RxNorm, OpenFDA, and AI Fallback.
     Returns {valid: bool, canonical: str|None, suggestions: list[str], source: str}
     """
     result = {"valid": False, "canonical": None, "suggestions": [], "source": "none"}
-    if not HTTPX_AVAILABLE or not name or len(name.strip()) < 2:
+    if not name or len(name.strip()) < 2:
         return result
-    q = name.strip()
+    
+    raw = name.strip()
+    clean = clean_drug_term(raw)
+    
+    # 1. Direct dictionary check on clean term or raw term
+    raw_lower = raw.lower()
+    clean_lower = clean.lower()
+    
+    for term in [clean_lower, raw_lower]:
+        if not term:
+            continue
+        if term in COMMON_DRUG_NAMES:
+            result["valid"] = True
+            result["canonical"] = raw.title()
+            result["suggestions"] = [raw.title()]
+            result["source"] = "curated_db"
+            return result
+        # Check exact prefix match
+        matches = [d.title() for d in COMMON_DRUG_NAMES if d == term or d.startswith(term + " ") or (len(term) >= 4 and term in d)]
+        if matches:
+            result["valid"] = True
+            result["canonical"] = raw.title()
+            result["suggestions"] = matches[:5]
+            result["source"] = "curated_db"
+            return result
+
+    # 2. Query RxNorm API
+    query_term = clean if clean else raw
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            # 1. Try RxNorm approximate term search
-            rxnorm_url = f"https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term={url_quote(q)}&maxEntries=5"
-            try:
-                rx_res = await client.get(rxnorm_url)
-                if rx_res.status_code == 200:
-                    rx_data = rx_res.json()
-                    candidates = rx_data.get("approximateGroup", {}).get("candidate", [])
-                    if candidates:
-                        good_candidates = []
-                        q_words = [w.lower() for w in q.split() if len(w) > 1]
-                        for c in candidates:
-                            c_name = c.get("name", "")
-                            if not c_name:
-                                continue
-                            try:
-                                c_score = float(c.get("score", 0))
-                            except Exception:
-                                c_score = 0
-                            # Require first word of query to match candidate, or score to be high (>= 20)
-                            first_word = q_words[0] if q_words else ""
-                            is_match = False
-                            if first_word and (first_word in c_name.lower() or c_name.lower() in first_word):
-                                is_match = True
-                            if c_score >= 20 or is_match:
-                                good_candidates.append(c)
-                                
-                        if good_candidates:
-                            names = list(dict.fromkeys(c.get("name", "") for c in good_candidates))
-                            if names:
-                                result["valid"] = True
-                                result["canonical"] = names[0]
-                                result["suggestions"] = names[:5]
-                                result["source"] = "rxnorm"
-                                return result
-            except Exception:
-                pass
-
-            # 2. Try OpenFDA brand name search
-            try:
-                fda_url = f'https://api.fda.gov/drug/label.json?search=openfda.brand_name:"{url_quote(q)}"&limit=3'
-                fda_res = await client.get(fda_url)
-                if fda_res.status_code == 200:
-                    fda_data = fda_res.json()
-                    if fda_data.get("results"):
-                        brands = []
-                        for r in fda_data["results"]:
-                            brands.extend(r.get("openfda", {}).get("brand_name", []))
-                        brands = list(dict.fromkeys(brands))
-                        if brands:
-                            result["valid"] = True
-                            result["canonical"] = brands[0]
-                            result["suggestions"] = brands[:5]
-                            result["source"] = "openfda_brand"
-                            return result
-            except Exception:
-                pass
-
-            # 3. Try OpenFDA generic name search
-            try:
-                fda_url2 = f'https://api.fda.gov/drug/label.json?search=openfda.generic_name:"{url_quote(q)}"&limit=3'
-                fda_res2 = await client.get(fda_url2)
-                if fda_res2.status_code == 200:
-                    fda_data2 = fda_res2.json()
-                    if fda_data2.get("results"):
-                        generics = []
-                        for r in fda_data2["results"]:
-                            generics.extend(r.get("openfda", {}).get("generic_name", []))
-                        generics = list(dict.fromkeys(generics))
-                        if generics:
-                            result["valid"] = True
-                            result["canonical"] = generics[0]
-                            result["suggestions"] = generics[:5]
-                            result["source"] = "openfda_generic"
-                            return result
-            except Exception:
-                pass
-
-            # 4. Try local Indian drug brands database fallback
-            try:
-                INDIAN_DRUG_BRANDS = [
-                    "Qtil CV", "Qtil 500", "Qtil 250", "Dolo 650", "Calpol", "Crocin",
-                    "Meftal Spas", "Meftal", "Combiflam", "Paracetamol", "Sizodon Plus",
-                    "Sizodon", "Risperidone", "Risperdal", "Pantocid", "Pan 40", "Omez",
-                    "Rantac", "Aciloc", "Augmentin", "Clavam", "Taxim O", "Monocef",
-                    "Glycomet", "Janumet", "Metformin", "Glimepiride", "Telma", "Telmisartan",
-                    "Amlodipine", "Amlokind", "Atorvastatin", "Rosuvas", "Cetirizine",
-                    "Avil", "Allegra", "Limcee", "Becosules", "Shelcal", "Digene", "Gelusil",
-                    "Pudin Hara", "Neurobion Forte", "Pan-D", "Pantocid-DSR", "Rabeprazole",
-                    "Domperidone", "Levocetirizine", "Montair LC", "Montelukast", "Amoxicillin"
-                ]
-                q_lower = q.lower()
-                local_matches = [b for b in INDIAN_DRUG_BRANDS if q_lower in b.lower() or b.lower() in q_lower]
-                if local_matches:
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            rx_url = f"https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term={url_quote(query_term)}&maxEntries=5"
+            resp = await client.get(rx_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("approximateGroup", {}).get("candidate", [])
+                valid_candidates = []
+                for c in candidates:
+                    c_name = c.get("name", "")
+                    try:
+                        score = float(c.get("score", 0))
+                    except Exception:
+                        score = 0
+                    c_words = [w.lower() for w in c_name.split()]
+                    q_first = query_term.lower().split()[0] if query_term.split() else ""
+                    if score >= 50 and (q_first in c_words or any(w.startswith(q_first) and len(q_first) >= 3 for w in c_words)):
+                        valid_candidates.append(c_name)
+                
+                if valid_candidates:
                     result["valid"] = True
-                    result["canonical"] = local_matches[0]
-                    result["suggestions"] = local_matches[:5]
-                    result["source"] = "local_indian_db"
+                    result["canonical"] = valid_candidates[0]
+                    result["suggestions"] = list(dict.fromkeys(valid_candidates))[:5]
+                    result["source"] = "rxnorm"
                     return result
-            except Exception:
-                pass
-
-            # 5. Try Groq LLaMA or Gemini LLM verification as ultimate fallback
-            if GROQ_AVAILABLE and GROQ_API_KEY:
-                try:
-                    from groq import Groq
-                    client = Groq(api_key=GROQ_API_KEY)
-                    sys_prompt = (
-                        "You are a clinical pharmacist assistant. Verify if the provided term is a real medication, "
-                        "active pharmaceutical ingredient, or therapeutic compound (brand name or generic name, "
-                        "including Indian brand names). Reply ONLY with a valid JSON object in this format: "
-                        '{"valid": true/false, "canonical": "Correctly Spelled Name"}'
-                    )
-                    resp = call_groq_with_fallback(
-                        client,
-                        messages=[
-                            {"role": "system", "content": sys_prompt},
-                            {"role": "user", "content": f"Term: {q}"}
-                        ],
-                        response_format={"type": "json_object"},
-                        timeout=4.0
-                    )
-                    ai_res = json.loads(resp.choices[0].message.content)
-                    if ai_res.get("valid") is True:
-                        result["valid"] = True
-                        result["canonical"] = ai_res.get("canonical") or q.title()
-                        result["suggestions"] = [result["canonical"]]
-                        result["source"] = "groq_llm"
-                        return result
-                except Exception as ex:
-                    logging.warning(f"Groq verification fallback failed: {ex}")
-
     except Exception:
         pass
+
+    # 3. Query OpenFDA API
+    try:
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            fda_url = f'https://api.fda.gov/drug/label.json?search=openfda.generic_name:"{url_quote(query_term)}"+openfda.brand_name:"{url_quote(query_term)}"&limit=3'
+            resp = await client.get(fda_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                brands = []
+                for r in results:
+                    brands.extend(r.get("openfda", {}).get("brand_name", []))
+                    brands.extend(r.get("openfda", {}).get("generic_name", []))
+                if brands:
+                    result["valid"] = True
+                    result["canonical"] = brands[0].title()
+                    result["suggestions"] = list(dict.fromkeys([b.title() for b in brands]))[:5]
+                    result["source"] = "openfda"
+                    return result
+    except Exception:
+        pass
+
+    # 4. Fast Groq AI Fallback
+    if GROQ_AVAILABLE and GROQ_API_KEY:
+        try:
+            from groq import Groq
+            g_client = Groq(api_key=GROQ_API_KEY)
+            sys_msg = (
+                "You are an expert clinical pharmacist verifying medication authenticity. "
+                "Determine if the term is an authentic medication, active pharmaceutical ingredient, or real pharmaceutical brand in global or regional markets (especially India, US, UK, EU). "
+                "Reply ONLY in JSON: {\"valid\": true or false, \"canonical\": \"Standard Medication Name or null\"}"
+            )
+            chat_comp = g_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": f"Medication query: {raw}"}
+                ],
+                model="llama-3.3-70b-versatile",
+                response_format={"type": "json_object"},
+                temperature=0.0,
+                timeout=3.0
+            )
+            content = chat_comp.choices[0].message.content
+            parsed = json.loads(content)
+            if parsed.get("valid") is True:
+                canon = parsed.get("canonical") or raw.title()
+                result["valid"] = True
+                result["canonical"] = canon
+                result["suggestions"] = [canon]
+                result["source"] = "ai_clinical_db"
+                return result
+        except Exception:
+            pass
+
     return result
 
 
@@ -289,6 +347,7 @@ class Medicine(Base):
     end_date      = Column(Date, nullable=True)
     is_deleted    = Column(Boolean, default=False)   # soft-delete flag
     formulation   = Column(String, default="pill")   # 'pill' or 'syrup'
+    previous_state = Column(String, nullable=True)   # JSON string for undoing merges
     created_at    = Column(DateTime, server_default=func.now())
     owner         = relationship("User", back_populates="medicines")
     schedules     = relationship("Schedule", back_populates="medicine", cascade="all, delete-orphan")
@@ -384,6 +443,7 @@ _MIGRATIONS = [
     ("intake_logs",        "log_date",     "DATE"),
     ("medicines",          "start_date",   "DATE"),
     ("medicines",          "end_date",     "DATE"),
+    ("medicines",          "previous_state", "TEXT"),
     ("users",              "blood_group",  "VARCHAR"),
     ("emergency_contacts", "email",        "VARCHAR"),
     ("push_subscriptions", "user_id",      "INTEGER"),  # trigger table creation via migration check
@@ -556,21 +616,28 @@ def get_current_user(token: str = Depends(_oauth2), db: Session = Depends(get_db
 
 
 def _medicine_dict(m: Medicine) -> dict:
+    prev_parsed = None
+    if m.previous_state:
+        try: prev_parsed = json.loads(m.previous_state)
+        except: pass
+
     return {
-        "id":            m.id,
-        "user_id":       m.user_id,
-        "name":          m.name,
-        "description":   m.description,
-        "dosage":        m.dosage,
-        "category":      m.category or "Other",
-        "formulation":   m.formulation or "pill",
-        "stock":         m.stock,
-        "initial_stock": m.initial_stock,
-        "start_date":    str(m.start_date) if m.start_date else None,
-        "end_date":      str(m.end_date)   if m.end_date   else None,
-        "created_at":    str(m.created_at),
-        "schedules":     [s.time for s in m.schedules],
-        "low_stock":     m.stock < 10,
+        "id":                 m.id,
+        "user_id":            m.user_id,
+        "name":               m.name,
+        "description":        m.description,
+        "dosage":             m.dosage,
+        "category":           m.category or "Other",
+        "formulation":        m.formulation or "pill",
+        "stock":              m.stock,
+        "initial_stock":      m.initial_stock,
+        "start_date":         str(m.start_date) if m.start_date else None,
+        "end_date":           str(m.end_date)   if m.end_date   else None,
+        "created_at":         str(m.created_at),
+        "schedules":          [s.time for s in m.schedules],
+        "low_stock":          m.stock < 10,
+        "has_previous_state": bool(m.previous_state),
+        "previous_state":     prev_parsed,
     }
 
 
@@ -1317,6 +1384,48 @@ async def add_medicine(
     if data.end_date:
         try: end_d = datetime.strptime(data.end_date, "%Y-%m-%d").date()
         except: pass
+
+    # ── Smart Upsert & Duplicate Prevention ───────────────────────
+    # If medicine with the same name already exists for this patient, update & restock it!
+    clean_name = data.name.strip().lower()
+    existing_med = db.query(Medicine).filter(
+        Medicine.user_id == target_id,
+        Medicine.is_deleted == False,
+        func.lower(Medicine.name) == clean_name
+    ).first()
+
+    if not existing_med:
+        # Check base name matching (e.g. 'qtil cv' matching 'qtil cv 500mg')
+        base_name = re.sub(r"\b\d+\s*(?:mg|ml|mcg|gm|g|iu)\b", "", clean_name).strip()
+        if len(base_name) >= 3:
+            existing_med = db.query(Medicine).filter(
+                Medicine.user_id == target_id,
+                Medicine.is_deleted == False,
+                func.lower(Medicine.name).ilike(f"{base_name}%")
+            ).first()
+
+    if existing_med:
+        existing_med.name = data.name.strip()
+        if data.dosage: existing_med.dosage = data.dosage
+        if data.category: existing_med.category = data.category
+        if data.formulation: existing_med.formulation = data.formulation
+        if data.description: existing_med.description = data.description
+        if start_d: existing_med.start_date = start_d
+        if end_d: existing_med.end_date = end_d
+        
+        # Restock: Add new stock to existing stock count
+        existing_med.stock = (existing_med.stock or 0) + (data.stock or 0)
+        existing_med.initial_stock = max(existing_med.initial_stock or 0, existing_med.stock)
+        
+        if data.schedules:
+            db.query(Schedule).filter(Schedule.medicine_id == existing_med.id).delete()
+            for t in data.schedules:
+                db.add(Schedule(medicine_id=existing_med.id, time=t))
+        
+        db.commit()
+        db.refresh(existing_med)
+        return _medicine_dict(existing_med)
+
     med = Medicine(
         user_id=target_id,
         name=data.name, description=data.description,
@@ -1447,6 +1556,93 @@ def delete_medicine(
     return {"message": f"{med.name} deleted successfully"}
 
 
+@app.post("/medicines/{med_id}/undo-merge", tags=["Medicines"])
+def undo_medicine_merge(
+    med_id:     int,
+    patient_id: Optional[int] = Query(None),
+    db:         Session       = Depends(get_db),
+    user:       User          = Depends(get_current_user),
+):
+    """Reverts a merged/updated medicine back to its previous dosage, schedules, and stock."""
+    target_id = _resolve_target(user, patient_id)
+    med = db.query(Medicine).filter(Medicine.id == med_id, Medicine.user_id == target_id).first()
+    if not med:
+        raise HTTPException(404, "Medicine not found")
+    if not med.previous_state:
+        raise HTTPException(400, "No previous state recorded for this medicine.")
+
+    try:
+        prev = json.loads(med.previous_state)
+    except Exception:
+        raise HTTPException(400, "Invalid previous state format.")
+
+    if "dosage" in prev: med.dosage = prev["dosage"]
+    if "category" in prev: med.category = prev["category"]
+    if "formulation" in prev: med.formulation = prev["formulation"]
+    if "stock" in prev: med.stock = prev["stock"]
+    if "start_date" in prev and prev["start_date"]:
+        try: med.start_date = datetime.strptime(prev["start_date"], "%Y-%m-%d").date()
+        except: pass
+    if "end_date" in prev:
+        try: med.end_date = datetime.strptime(prev["end_date"], "%Y-%m-%d").date() if prev["end_date"] else None
+        except: pass
+
+    if "schedules" in prev and isinstance(prev["schedules"], list):
+        db.query(Schedule).filter(Schedule.medicine_id == med.id).delete()
+        for t in prev["schedules"]:
+            db.add(Schedule(medicine_id=med.id, time=t))
+
+    med.previous_state = None  # consumed
+    db.commit()
+    db.refresh(med)
+    return {"message": f"Successfully reverted {med.name} to previous dosage and schedule.", "medicine": _medicine_dict(med)}
+
+
+@app.post("/medicines/{med_id}/skip-dose", tags=["Doses"])
+def skip_dose(
+    med_id:     int,
+    data:       DoseStatusUpdate,
+    patient_id: Optional[int] = Query(None),
+    db:         Session       = Depends(get_db),
+    user:       User          = Depends(get_current_user),
+):
+    """
+    Skip / delete a specific dose slot for a single day (e.g. today)
+    without deleting the entire medicine from the patient's schedule.
+    """
+    target_id = _resolve_target(user, patient_id)
+    med = db.query(Medicine).filter(Medicine.id == med_id, Medicine.user_id == target_id).first()
+    if not med:
+        raise HTTPException(404, "Medicine not found")
+
+    try:
+        log_day = datetime.strptime(data.date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "date_str must be YYYY-MM-DD")
+
+    existing = db.query(IntakeLog).filter(
+        IntakeLog.medicine_id    == med_id,
+        IntakeLog.user_id        == target_id,
+        IntakeLog.scheduled_time == data.scheduled_time,
+        IntakeLog.log_date       == log_day,
+    ).first()
+
+    if existing:
+        existing.status = "skipped"
+    else:
+        db.add(IntakeLog(
+            user_id        = target_id,
+            medicine_id    = med_id,
+            status         = "skipped",
+            scheduled_time = data.scheduled_time,
+            log_date       = log_day,
+            taken_at       = datetime.combine(log_day, datetime.utcnow().time()),
+        ))
+
+    db.commit()
+    return {"message": f"Dose for {data.scheduled_time} removed for {data.date_str}"}
+
+
 # ══════════════════════════════════════════════════════════
 #  DOSE STATUS TOGGLE (taken / missed / pending)
 # ══════════════════════════════════════════════════════════
@@ -1567,6 +1763,10 @@ def get_schedule_for_date(
                 IntakeLog.log_date       == log_day,
             ).first()
             
+            # If dose was skipped/deleted for this day, don't show it in today's active schedule
+            if log and log.status == "skipped":
+                continue
+
             # Default to missed if time has passed
             status_val = "pending"
             if log:
@@ -1987,7 +2187,7 @@ def sanitize_and_normalize_medicines(raw_list: list, today_str: str) -> List[dic
             times = generate_default_schedule(times_per_day)
 
         formulation = str(med.get("formulation") or "tablet").strip().lower()
-        if not any(f in formulation for f in ["tablet", "capsule", "liquid", "ointment", "injection", "drops", "spray"]):
+        if not any(f in formulation for f in ["tablet", "capsule", "liquid", "ointment", "injection", "drops", "spray", "cream", "gel"]):
             if "cap" in name.lower():
                 formulation = "capsule"
             elif any(k in name.lower() for k in ["syr", "susp", "liquid"]):
@@ -2011,13 +2211,17 @@ def sanitize_and_normalize_medicines(raw_list: list, today_str: str) -> List[dic
             except Exception:
                 end_date = ""
 
-        stock = med.get("stock")
-        try:
-            stock = int(stock)
-            if stock <= 0:
+        # Stock calculation: 1 tube/unit for ointments/creams/drops/sprays; tablets/capsules calculate total units
+        if formulation in ["ointment", "cream", "gel", "drops", "spray", "lotion", "inhaler"]:
+            stock = 1
+        else:
+            stock = med.get("stock")
+            try:
+                stock = int(stock)
+                if stock <= 0:
+                    stock = max(1, times_per_day * 7) if formulation in ["tablet", "capsule"] else 1
+            except (ValueError, TypeError):
                 stock = max(1, times_per_day * 7) if formulation in ["tablet", "capsule"] else 1
-        except (ValueError, TypeError):
-            stock = max(1, times_per_day * 7) if formulation in ["tablet", "capsule"] else 1
 
         dosage = str(med.get("dosage") or f"1 {formulation}").strip()
         instructions = str(med.get("instructions") or "").strip()
@@ -2065,14 +2269,25 @@ async def upload_prescription_ocr(
     # ═════════════════════════════════════════════════════════════════════
     if GEMINI_API_KEY and HTTPX_AVAILABLE:
         try:
-            img_b64 = base64.b64encode(contents).decode("utf-8")
             mime_type = file.content_type or "image/jpeg"
             if "pdf" in mime_type.lower():
                 mime_type = "application/pdf"
-            elif "png" in mime_type.lower():
-                mime_type = "image/png"
+                img_b64 = base64.b64encode(contents).decode("utf-8")
             else:
-                mime_type = "image/jpeg"
+                if PIL_AVAILABLE:
+                    try:
+                        pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+                        pil_img.thumbnail((1600, 1600), Image.LANCZOS)
+                        buf = io.BytesIO()
+                        pil_img.save(buf, format="JPEG", quality=85, optimize=True)
+                        img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                        mime_type = "image/jpeg"
+                    except Exception:
+                        img_b64 = base64.b64encode(contents).decode("utf-8")
+                        mime_type = "image/jpeg"
+                else:
+                    img_b64 = base64.b64encode(contents).decode("utf-8")
+                    mime_type = "image/jpeg"
 
             vision_prompt = f"""You are an elite clinical pharmacist and AI medical specialist.
 Decipher and extract ALL PRESCRIBED MEDICATIONS from this doctor's prescription image (printed or handwritten).
@@ -2124,7 +2339,7 @@ Respond ONLY with a valid JSON object in this exact schema (no markdown, no extr
   ]
 }}"""
 
-            vision_models = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest"]
+            vision_models = ["gemini-3.5-flash"]
             for vm in vision_models:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{vm}:generateContent?key={GEMINI_API_KEY}"
@@ -2136,11 +2351,13 @@ Respond ONLY with a valid JSON object in this exact schema (no markdown, no extr
                             ]
                         }]
                     }
-                    async with httpx.AsyncClient(timeout=25.0) as client:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
                         resp = await client.post(url, json=payload)
                         if resp.status_code == 200:
                             data = resp.json()
-                            raw_txt = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                            candidate = data.get("candidates", [{}])[0]
+                            parts_list = candidate.get("content", {}).get("parts", [])
+                            raw_txt = "".join([p.get("text", "") for p in parts_list if p.get("text")]).strip()
                             f_idx = raw_txt.find('{')
                             l_idx = raw_txt.rfind('}')
                             if f_idx != -1 and l_idx != -1:
@@ -2151,53 +2368,23 @@ Respond ONLY with a valid JSON object in this exact schema (no markdown, no extr
                                         raw_text_display = f"Deciphered via Clinical Multimodal Vision ({vm})"
                                         break
                 except Exception as ex_vm:
-                    logging.warning(f"[Tier 1 Vision API] Model {vm} error: {ex_vm}")
+                    pass
         except Exception as vision_err:
-            logging.warning(f"[Tier 1 Vision API Failed]: {vision_err}")
+            pass
 
     # ═════════════════════════════════════════════════════════════════════
-    # TIER 2: MULTI-PASS TESSERACT OCR + GROQ LLM (Fallback)
+    # TIER 2: HIGH-SPEED TESSERACT OCR + GROQ LLM (Fallback)
     # ═════════════════════════════════════════════════════════════════════
     if not extracted_medicines:
         raw_text_combined = ""
         if TESSERACT_AVAILABLE:
             try:
                 image = Image.open(io.BytesIO(contents)).convert("RGB")
-                w, h = image.size
-                large = image.resize((w * 3, h * 3), Image.LANCZOS)
-
-                gray = large.convert("L")
-                gray = ImageEnhance.Contrast(gray).enhance(2.5)
-                gray = ImageEnhance.Sharpness(gray).enhance(2.2)
-                gray = gray.filter(ImageFilter.SHARPEN)
-
-                custom_config_1 = r"--oem 3 --psm 6"
-                custom_config_2 = r"--oem 3 --psm 4"
-                custom_config_3 = r"--oem 3 --psm 3"
-
-                texts = []
-                for cfg in [custom_config_1, custom_config_2, custom_config_3]:
-                    t = pytesseract.image_to_string(gray, config=cfg)
-                    if t.strip():
-                        texts.append(t.strip())
-
-                t_orig = pytesseract.image_to_string(image)
-                if t_orig.strip():
-                    texts.append(t_orig.strip())
-
-                seen_lines = set()
-                combined_lines = []
-                for block in texts:
-                    for line in block.split("\n"):
-                        clean = line.strip()
-                        if not clean or is_line_blacklisted(clean, user.name):
-                            continue
-                        if clean not in seen_lines:
-                            seen_lines.add(clean)
-                            combined_lines.append(clean)
-
-                raw_text_combined = "\n".join(combined_lines)
-                raw_text_display = "\n".join([l.strip() for l in (t_orig.strip() or (texts[0] if texts else "")).split("\n") if l.strip() and not is_line_blacklisted(l.strip(), user.name)])
+                if max(image.size) > 1600:
+                    image.thumbnail((1600, 1600), Image.LANCZOS)
+                gray = image.convert("L")
+                raw_text_combined = pytesseract.image_to_string(gray)
+                raw_text_display = raw_text_combined
             except Exception as tess_err:
                 logging.warning(f"[Tesseract OCR Error]: {tess_err}")
 
@@ -2313,28 +2500,47 @@ Respond ONLY with valid JSON (no markdown):
     # ═════════════════════════════════════════════════════════════════════
     verified_medicines = []
     for med in extracted_medicines:
-        med_name = med.get("name", "").strip()
-        if len(med_name) >= 3:
+        orig_name = med.get("name", "").strip()
+        form = med.get("formulation", "").lower()
+        if len(orig_name) >= 3:
             try:
-                vres = await verify_medicine_name_api(med_name)
+                vres = await verify_medicine_name_api(orig_name)
                 if vres.get("valid") and vres.get("canonical"):
                     canonical = vres["canonical"]
-                    # If canonical is close, apply canonical spelling
-                    if canonical.lower() != med_name.lower() and len(canonical) > 3:
-                        # Keep dosage suffix if present
-                        dose_match = re.search(r"\b\d+\s*(?:mg|ml|mcg|gm|g|iu)\b", med_name, re.IGNORECASE)
-                        if dose_match and dose_match.group(0).lower() not in canonical.lower():
-                            med["name"] = f"{canonical} {dose_match.group(0)}"
-                        else:
-                            med["name"] = canonical
-                        med["_verified_source"] = vres.get("source", "verified")
+                    dose_in_canonical = bool(re.search(r"\b\d+\s*(?:mg|ml|mcg|gm|g|iu)\b", canonical, re.IGNORECASE))
+                    dose_match = re.search(r"\b\d+\s*(?:mg|ml|mcg|gm|g|iu)\b", orig_name, re.IGNORECASE)
+                    
+                    if not dose_in_canonical and dose_match and dose_match.group(0).lower() not in canonical.lower():
+                        med["name"] = f"{canonical} {dose_match.group(0)}"
                     else:
-                        med["_verified_source"] = vres.get("source", "verified")
+                        med["name"] = canonical
+                    
+                    med["_verified_source"] = vres.get("source", "verified")
                 else:
                     med["_verified_source"] = "unverified"
             except Exception:
                 med["_verified_source"] = "unverified"
+        
+        # Keep formulation keyword in name if present in original (e.g. 'Sofradex Ointment')
+        form_keywords = ["ointment", "cream", "drops", "gel", "spray", "inhaler", "syrup", "suspension"]
+        for kw in form_keywords:
+            if kw in orig_name.lower() and kw not in med["name"].lower():
+                med["name"] = f"{med['name']} {kw.capitalize()}"
+
+        # Clean repeated strength tokens
+        if med.get("name"):
+            med["name"] = re.sub(r"\b(\d+\s*(?:mg|ml|mcg|gm|g|iu))\s+\1\b", r"\1", med["name"], flags=re.IGNORECASE).strip()
+            med["name"] = re.sub(r"\b(\d+)\s*mg\s+\1\s*mg\b", r"\1 mg", med["name"], flags=re.IGNORECASE).strip()
+
         verified_medicines.append(med)
+
+    # Unify diagnosis across all medicines from the same prescription
+    primary_diag = next((m.get("category") for m in verified_medicines if m.get("category") and m.get("category").lower() not in ["other", "general", "otitis externa", "infection"]), None)
+    if primary_diag:
+        for m in verified_medicines:
+            if not m.get("category") or m.get("category").lower() in ["other", "general", "otitis externa"]:
+                m["category"] = primary_diag
+                m["disease_name"] = primary_diag
 
     return {
         "success": True,
@@ -2735,27 +2941,24 @@ USER PROFILE & LIVE DATA:
 {chr(10).join(contact_lines) if contact_lines else 'No emergency contacts added.'}
 """
 
-    system_prompt = f"""You are PillSync AI, an intelligent personal medication, health, and platform assistant for {user.name}.
-You have direct access to the user's live profile, active prescriptions, stock levels, and schedules.
-
+    system_prompt = f"""You are PillSync AI, an intelligent, helpful, and professional personal health & medication assistant for {user.name}.
+You have access to the user's background details if relevant:
 {context_str}
 
-PILLSYNC WEBSITE FEATURES & RULES:
-- TIME FORMAT: PillSync STRICTLY uses 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM, 08:00 PM). NEVER mention 24-hour time or formats like 14:00.
-- Adding Medicines: Click + Add Medicine on the navigation bar or Overview tab. Enter the name, dosage, schedule times in 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM), start date, and initial stock, then click Save.
-- Scanning Prescriptions (OCR): Click Scan Prescription (OCR) on the dashboard to upload prescription images or PDF scans. The AI extracts medicine names, dosages, and 12-hour schedule times automatically.
-- Tracking & Adherence: Go to the Progress tab to view the 7-day tracker, daily completion circles, and monthly/weekly adherence statistics.
-- Refill Prediction Engine: Go to the Refill Predictor or My Medicines tab to see depletion forecasts, remaining days of stock, and recommended refill dates.
-- Emergency Contacts: Go to the Emergency Contacts tab to add or notify family, friends, or doctors.
-- Settings & Profile: Go to Settings to update personal details, change passwords, or toggle dark mode.
+CONVERSATION & RESPONSE GUIDELINES:
+1. GREETINGS & CASUAL CHAT (e.g. "hey", "hi", "hello", "good morning", "how are you"):
+   - Respond with a brief, friendly, professional 1-sentence greeting asking how you can help.
+   - Example: "Hello Ayushi! How can I assist you with your medications, schedules, or refills today?"
+   - NEVER dump their medication list, contacts, or vitals for casual greetings or small talk.
 
-RESPONSE RULES:
-- Output in clean, natural, plain text only. Do NOT use markdown symbols like asterisks (** or *), hashtags (#), or bullet stars.
-- All times MUST be in 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM, 09:00 PM). Never use 24-hour time.
-- When asked about their active medicines, schedules, stock, vitals, or contacts: Directly list the relevant information from their live profile above in plain text.
-- When asked how to use the website or perform actions: Give concise, clear, step-by-step guidance.
-- For general medical questions (e.g. side effects, interactions, dietary advice): Give accurate clinical facts in 2-3 sentences. Always remind: 'Consult your doctor or pharmacist for personalized medical advice.'
-- CRITICAL: Output ONLY the final plain text response. DO NOT include any reasoning, internal monologue, think tags, or markdown symbols.
+2. SPECIFIC QUESTIONS (e.g. "what are my medicines?", "what is my schedule?", "how do I add a medicine?"):
+   - Answer directly, concisely, and accurately based strictly on what they asked for.
+   - Keep answers short, helpful, and focused (1 to 3 sentences, or a clean short list if specifically asked to list).
+
+3. PILLSYNC PLATFORM RULES:
+   - TIME FORMAT: PillSync STRICTLY uses 12-hour AM/PM format (e.g. 08:00 AM, 02:00 PM). Never use 24-hour time.
+   - Output in clean, natural, plain text only. Do NOT use markdown symbols like asterisks (** or *), hashtags (#), or bullet stars.
+   - For medical questions: Give concise, accurate facts and remind: "Please consult your doctor or pharmacist for personalized medical advice."
 """
 
     response_text = ""
@@ -2770,8 +2973,8 @@ RESPONSE RULES:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": data.query}
                 ],
-                temperature=0.4,
-                max_tokens=500
+                temperature=0.3,
+                max_tokens=350
             )
             raw = completion.choices[0].message.content or ""
             response_text = clean_ai_response(raw)
@@ -2781,7 +2984,7 @@ RESPONSE RULES:
     # 2. Try Gemini fallback if Groq failed or wasn't configured
     if not response_text and GEMINI_API_KEY:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={GEMINI_API_KEY}"
             g_payload = {
                 "contents": [
                     {"role": "user", "parts": [{"text": f"{system_prompt}\n\nUser Question: {data.query}"}]}
